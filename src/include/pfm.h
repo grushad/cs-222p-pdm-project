@@ -2,6 +2,7 @@
 #define _pfm_h_
 
 #define PAGE_SIZE 4096
+#define UNSIGNED_SZ sizeof(unsigned)
 
 #include <string>
 
@@ -9,6 +10,11 @@ namespace PeterDB {
 
     typedef unsigned PageNum;
     typedef int RC;
+
+//    typedef struct pages{
+//        unsigned int pageNum;
+//        void* data;
+//    }pages;
 
     class FileHandle;
 
@@ -20,6 +26,7 @@ namespace PeterDB {
         RC destroyFile(const std::string &fileName);                        // Destroy a file
         RC openFile(const std::string &fileName, FileHandle &fileHandle);   // Open a file
         RC closeFile(FileHandle &fileHandle);                               // Close a file
+
 
     protected:
         PagedFileManager();                                                 // Prevent construction
@@ -35,6 +42,9 @@ namespace PeterDB {
         unsigned readPageCounter;
         unsigned writePageCounter;
         unsigned appendPageCounter;
+
+        FILE * fileP;
+        unsigned numPages;
 
         FileHandle();                                                       // Default constructor
         ~FileHandle();                                                      // Destructor

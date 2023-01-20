@@ -78,6 +78,8 @@ namespace PeterDB {
 
         RC closeFile(FileHandle &fileHandle);                               // Close a record-based file
 
+//        static PagedFileManager &pfmInstance();
+
         //  Format of the data passed into the function is the following:
         //  [n byte-null-indicators for y fields] [actual value for the first field] [actual value for the second field] ...
         //  1) For y fields, there is n-byte-null-indicators in the beginning of each record.
