@@ -86,26 +86,13 @@ namespace PeterDB {
 
     RC PagedFileManager::closeFile(FileHandle &fileHandle) {
         if (fileHandle.fileP != nullptr) {
-            unsigned int *nP = &fileHandle.numPages;
             rewind(fileHandle.fileP);
-            fwrite(nP,UNSIGNED_SZ,1,fileHandle.fileP);
-
-            unsigned int * rC = &fileHandle.readPageCounter;
-            fwrite(rC,UNSIGNED_SZ,1,fileHandle.fileP);
-
-            unsigned int * wC = &fileHandle.writePageCounter;
-            fwrite(wC,UNSIGNED_SZ,1,fileHandle.fileP);
-
-            unsigned int * aC = &fileHandle.appendPageCounter;
-            fwrite(aC,UNSIGNED_SZ,1,fileHandle.fileP);
-
+            fwrite(&fileHandle.numPages,UNSIGNED_SZ,1,fileHandle.fileP);
+            fwrite(&fileHandle.readPageCounter,UNSIGNED_SZ,1,fileHandle.fileP);
+            fwrite(&fileHandle.writePageCounter,UNSIGNED_SZ,1,fileHandle.fileP);
+            fwrite(&fileHandle.appendPageCounter,UNSIGNED_SZ,1,fileHandle.fileP);
             fclose(fileHandle.fileP);
             fileHandle.fileP = nullptr;
-            nP = nullptr;
-            rC = nullptr;
-            wC = nullptr;
-            aC = nullptr;
-
             return 0;
         }
         return -1;

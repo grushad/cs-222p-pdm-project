@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <cmath>
 #include <cstring>
+#include <iostream>
 using namespace std;
 namespace PeterDB {
     RecordBasedFileManager &RecordBasedFileManager::instance() {
@@ -78,25 +79,9 @@ namespace PeterDB {
          return -1;
     }
 
-    RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                            const void *data, RID &rid) {
-        unsigned numFields = recordDescriptor.size();
-        unsigned numBytes = ceil(numFields / 8);
-
-        unsigned recSize = 0;
-        for(Attribute a: recordDescriptor){
-            recSize += a.length;
-        }
-
-        void *nullP = malloc(numBytes);
-        memcpy(nullP, data, numBytes);
-        return 0;
-    }
-
-    void findFreePage(unsigned recSize, FileHandle &fileHandle){
-        FILE *fp = fileHandle.fileP;
+    bool checkPageFreeSpace(unsigned recSize, FILE **fp){
         void *data = ::malloc(PAGE_SIZE);
-        fread(data,PAGE_SIZE, 1, fp);
+        fread(data,PAGE_SIZE, 1, *fp);
         auto *dataB = static_cast<unsigned int*>(data);
         dataB += (PAGE_SIZE / UNSIGNED_SZ) - 1;
 
@@ -104,12 +89,130 @@ namespace PeterDB {
         memcpy(freeD,dataB,UNSIGNED_SZ);
         unsigned freeS = *(static_cast<unsigned int*>(freeD));
 
+        free(data);
         if(freeS > recSize)
-            return;
+            return true;
+
+        return false;
     }
+
+    unsigned findFreePage(unsigned recSize, FileHandle &fileHandle){
+        FILE *fp = fileHandle.fileP;
+        if(checkPageFreeSpace(recSize, &fp)) {
+            unsigned numP = (ftell(fp) - PAGE_SIZE)/ PAGE_SIZE;
+            if(numP != 0)
+                return numP - 1;
+        }
+        //skip the hidden page
+        fseek(fp,PAGE_SIZE,SEEK_SET);
+        for(unsigned i = 0; i < fileHandle.numPages; i++){
+            if(checkPageFreeSpace(recSize, &fp))
+                return i;
+            fseek(fp,PAGE_SIZE,SEEK_CUR);
+        }
+        return fileHandle.numPages;
+    }
+
+    RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                                            const void *data, RID &rid) {
+        unsigned numFields = recordDescriptor.size();
+        unsigned nullInd = ceil(numFields / 8);
+
+        unsigned recSize = 0;
+        for(Attribute a: recordDescriptor){
+            recSize += a.length;
+        }
+
+        unsigned totalRecSize = UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ) + recSize;
+        unsigned pageNum = findFreePage(totalRecSize, fileHandle);
+
+        auto *recData = static_cast<unsigned char*>(::malloc(totalRecSize));
+        ::memcpy(recData,&numFields,UNSIGNED_SZ);
+
+        recData += UNSIGNED_SZ;
+        ::memcpy(recData, data, nullInd);
+
+        recData += nullInd;
+
+        void *nullPtr = malloc(numFields);
+        ::memcpy(nullPtr,data, numFields);
+
+        unsigned offsetBytes = totalRecSize - recSize;
+        for(int i = 0; i < numFields; i++){
+            Attribute a = recordDescriptor[i];
+            if(((unsigned char *) nullPtr) [i] == 1){
+                signed np = -1;
+                ::memcpy(recData, &np, UNSIGNED_SZ);
+            }else{
+                offsetBytes += a.length;
+                ::memcpy(recData, &offsetBytes, UNSIGNED_SZ);
+            }
+            recData += UNSIGNED_SZ;
+        }
+        void *temp = ::malloc(sizeof(data));
+        ::memcpy(temp, data, sizeof(data));
+        auto *content = static_cast<unsigned char*>(temp);
+
+        content += nullInd;
+
+        for(int i = 0; i < numFields; i++){
+            Attribute a = recordDescriptor[i];
+            if(((unsigned char *) nullPtr) [i] == 0){
+                if(a.type == 2){
+                    content += UNSIGNED_SZ;
+                }
+                ::memcpy(recData, content, a.length);
+                recData += a.length;
+            }
+        }
+
+        rid.pageNum = pageNum;
+//        fileHandle.numRec += 1;
+        rid.slotNum = fileHandle.numRec;
+
+        if(pageNum == fileHandle.numPages){
+            fileHandle.appendPage(recData);
+        }else{
+            fileHandle.writePage(pageNum, recData);
+        }
+//        FILE *fp = fileHandle.fileP;
+//        void * readP = ::malloc(PAGE_SIZE);
+//        fileHandle.readPage(pageNum, readP);
+//
+//        auto *readT = static_cast<unsigned int*>(readP);
+//        readT += (PAGE_SIZE / UNSIGNED_SZ) - 2;
+//
+//        void * slotD = ::malloc(2 * UNSIGNED_SZ);
+//        unsigned skipB = ((2 + (fileHandle.numRec * 2)) * UNSIGNED_SZ);
+//        ::memcpy(slotD, &fileHandle.numRec,)
+        return 0;
+    }
+
 
     RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                           const RID &rid, void *data) {
+        if(fileHandle.fileP == nullptr)
+            return -1;
+
+        unsigned pageNum = rid.pageNum;
+        unsigned slotNum = rid.slotNum;
+
+        void * content = malloc(PAGE_SIZE);
+        fileHandle.readPage(pageNum, content);
+
+        auto *temp = static_cast<unsigned int*>(content);
+        temp += PAGE_SIZE / UNSIGNED_SZ;
+        temp -=2;
+        temp -= (slotNum * 2);
+        void * offL = ::malloc(UNSIGNED_SZ * 2);
+        ::memcpy(offL, temp, UNSIGNED_SZ * 2);
+        auto *tmp = static_cast<unsigned int*>(offL);
+        unsigned len = ((unsigned int * )tmp)[0];
+        unsigned offset = ((unsigned int * )tmp)[1];
+
+        auto *temp2 = static_cast<unsigned char*>(content);
+        temp2 += offset;
+        memcpy(data,temp2,len);
 
         return 0;
     }
