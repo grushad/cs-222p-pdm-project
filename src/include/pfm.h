@@ -11,11 +11,6 @@ namespace PeterDB {
     typedef unsigned PageNum;
     typedef int RC;
 
-//    typedef struct pages{
-//        unsigned int pageNum;
-//        void* data;
-//    }pages;
-
     class FileHandle;
 
     class PagedFileManager {
@@ -45,6 +40,8 @@ namespace PeterDB {
 
         FILE * fileP;
         unsigned numPages;
+        unsigned numFree;
+        unsigned numRec;
 
         FileHandle();                                                       // Default constructor
         ~FileHandle();                                                      // Destructor

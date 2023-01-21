@@ -1,6 +1,6 @@
 #include "src/include/pfm.h"
 #include <cstdio>
-#include <iostream>
+#include <cstring>
 /*
  * 1st Page of File:
  * number of pages
@@ -96,10 +96,11 @@ namespace PeterDB {
             unsigned int * wC = &fileHandle.writePageCounter;
             fwrite(wC,UNSIGNED_SZ,1,fileHandle.fileP);
 
-            unsigned int * aC = &fileHandle.appendPageCounter;\
+            unsigned int * aC = &fileHandle.appendPageCounter;
             fwrite(aC,UNSIGNED_SZ,1,fileHandle.fileP);
 
             fclose(fileHandle.fileP);
+            fileHandle.fileP = nullptr;
             nP = nullptr;
             rC = nullptr;
             wC = nullptr;
