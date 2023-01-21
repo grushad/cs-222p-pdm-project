@@ -2,7 +2,6 @@
 #include <cstdio>
 #include <cmath>
 #include <cstring>
-#include <iostream>
 using namespace std;
 namespace PeterDB {
     RecordBasedFileManager &RecordBasedFileManager::instance() {
