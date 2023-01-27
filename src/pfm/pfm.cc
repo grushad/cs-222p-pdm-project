@@ -53,10 +53,16 @@ namespace PeterDB {
             FILE *file = fopen(fileName.c_str(), "rb+");
 
             void *buffer = malloc(PAGE_SIZE);
+            if(buffer == nullptr)
+                return -1;
+
             fread(buffer, PAGE_SIZE, 1, file);
             fileHandle.fileP = file;
 
             void *numP = malloc(UNSIGNED_SZ);
+            if(numP == nullptr)
+                return -1;
+
             memcpy(numP, buffer, UNSIGNED_SZ);
             fileHandle.numPages = *(static_cast<unsigned int*>(numP));
 

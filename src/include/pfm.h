@@ -40,8 +40,6 @@ namespace PeterDB {
 
         FILE * fileP;
         unsigned numPages;
-        unsigned numFree;
-        unsigned numRec;
 
         FileHandle();                                                       // Default constructor
         ~FileHandle();                                                      // Destructor
