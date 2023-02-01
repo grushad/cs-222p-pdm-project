@@ -57,35 +57,18 @@ namespace PeterDB {
             if(file == nullptr)
                 return -1;
 
-            void *buffer = malloc(PAGE_SIZE);
-            if(buffer == nullptr)
+            auto *bufferA = static_cast<unsigned *>(malloc(PAGE_SIZE));
+            if(bufferA == nullptr)
                 return -1;
 
-            fread(buffer, PAGE_SIZE, 1, file);
+            fread(bufferA, PAGE_SIZE, 1, file);
             fileHandle.fileP = file;
 
-            unsigned numP;
-            memcpy(&numP, buffer, UNSIGNED_SZ);
-            fileHandle.numPages = numP;
-
-            auto *bufferA = static_cast<unsigned char*>(buffer);
-            bufferA += UNSIGNED_SZ;
-
-            unsigned rC;
-            memcpy(&rC,bufferA,UNSIGNED_SZ);
-            fileHandle.readPageCounter = rC;
-
-            bufferA += UNSIGNED_SZ;
-            unsigned wC;
-            memcpy(&wC, bufferA, UNSIGNED_SZ);
-            fileHandle.writePageCounter = wC;
-
-            bufferA += UNSIGNED_SZ;
-            unsigned aC;
-            ::memcpy(&aC, bufferA, UNSIGNED_SZ);
-            fileHandle.appendPageCounter = aC;
-
-            free(buffer);
+            fileHandle.numPages = bufferA[0];
+            fileHandle.readPageCounter = bufferA[1];
+            fileHandle.writePageCounter = bufferA[2];
+            fileHandle.appendPageCounter = bufferA[3];
+            free(bufferA);
             return 0;
         }
         return -1;
@@ -94,23 +77,15 @@ namespace PeterDB {
     RC PagedFileManager::closeFile(FileHandle &fileHandle) {
         if (fileHandle.fileP != nullptr) {
             rewind(fileHandle.fileP);
-//            void *firstPage = calloc(1,PAGE_SIZE);
-//            fread(firstPage,1,PAGE_SIZE,fileHandle.fileP);
-//            auto * firstP = static_cast<unsigned char*>(firstPage);
-//            ::memcpy(firstP,&fileHandle.numPages,UNSIGNED_SZ);
-//            firstP += UNSIGNED_SZ;
-//            ::memcpy(firstP,&fileHandle.readPageCounter,UNSIGNED_SZ);
-//            firstP += UNSIGNED_SZ;
-//            ::memcpy(firstP,&fileHandle.writePageCounter,UNSIGNED_SZ);
-//            firstP += UNSIGNED_SZ;
-//            ::memcpy(firstP,&fileHandle.appendPageCounter,UNSIGNED_SZ);
-//            firstP -= (3 * UNSIGNED_SZ);
-//            ::fwrite(firstP,PAGE_SIZE,1,fileHandle.fileP);
-            fwrite(&fileHandle.numPages,UNSIGNED_SZ,1,fileHandle.fileP);
-            fwrite(&fileHandle.readPageCounter,UNSIGNED_SZ,1,fileHandle.fileP);
-            fwrite(&fileHandle.writePageCounter,UNSIGNED_SZ,1,fileHandle.fileP);
-            fwrite(&fileHandle.appendPageCounter,UNSIGNED_SZ,1,fileHandle.fileP);
-
+            void *firstPage = calloc(1,PAGE_SIZE);
+            fread(firstPage,1,PAGE_SIZE,fileHandle.fileP);
+            auto * firstP = static_cast<unsigned *>(firstPage);
+            firstP[0] = fileHandle.numPages;
+            firstP[1] = fileHandle.readPageCounter;
+            firstP[2] = fileHandle.writePageCounter;
+            firstP[3] = fileHandle.appendPageCounter;
+            rewind(fileHandle.fileP);
+            ::fwrite(firstP,PAGE_SIZE,1,fileHandle.fileP);
             fclose(fileHandle.fileP);
             fileHandle.fileP = nullptr;
             return 0;
