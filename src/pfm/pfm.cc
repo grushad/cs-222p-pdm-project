@@ -33,6 +33,8 @@ namespace PeterDB {
             //write basic metadata to file i.e. one page
             FILE *file = fopen(fileName.c_str(), "w");
             void *data = calloc(1, PAGE_SIZE);
+            if(data == nullptr)
+                return -1;
             fwrite(data, PAGE_SIZE,1, file);
             fclose(file);
             free(data);
@@ -52,6 +54,9 @@ namespace PeterDB {
         if(fileExists(fileName)){
             FILE *file = fopen(fileName.c_str(), "rb+");
 
+            if(file == nullptr)
+                return -1;
+
             void *buffer = malloc(PAGE_SIZE);
             if(buffer == nullptr)
                 return -1;
@@ -59,32 +64,28 @@ namespace PeterDB {
             fread(buffer, PAGE_SIZE, 1, file);
             fileHandle.fileP = file;
 
-            void *numP = malloc(UNSIGNED_SZ);
-            if(numP == nullptr)
-                return -1;
+            unsigned numP;
+            memcpy(&numP, buffer, UNSIGNED_SZ);
+            fileHandle.numPages = numP;
 
-            memcpy(numP, buffer, UNSIGNED_SZ);
-            fileHandle.numPages = *(static_cast<unsigned int*>(numP));
+            auto *bufferA = static_cast<unsigned char*>(buffer);
+            bufferA += UNSIGNED_SZ;
 
-            auto *bufferA = static_cast<unsigned int*>(buffer);
-            bufferA += 1;
+            unsigned rC;
+            memcpy(&rC,bufferA,UNSIGNED_SZ);
+            fileHandle.readPageCounter = rC;
 
-            void *rC = ::malloc(UNSIGNED_SZ);
-            memcpy(rC,bufferA,UNSIGNED_SZ);
-            fileHandle.readPageCounter = *(static_cast<unsigned int*>(rC));
+            bufferA += UNSIGNED_SZ;
+            unsigned wC;
+            memcpy(&wC, bufferA, UNSIGNED_SZ);
+            fileHandle.writePageCounter = wC;
 
-            bufferA += 1;
-            void *wC = malloc(UNSIGNED_SZ);
-            memcpy(wC, bufferA, UNSIGNED_SZ);
-            fileHandle.writePageCounter = *(static_cast<unsigned int*>(wC));
-
-            bufferA += 1;
-            void *aC = malloc(UNSIGNED_SZ);
-            ::memcpy(aC, bufferA, UNSIGNED_SZ);
-            fileHandle.appendPageCounter = *(static_cast<unsigned int*>(aC));
+            bufferA += UNSIGNED_SZ;
+            unsigned aC;
+            ::memcpy(&aC, bufferA, UNSIGNED_SZ);
+            fileHandle.appendPageCounter = aC;
 
             free(buffer);
-            free(numP);
             return 0;
         }
         return -1;
@@ -93,10 +94,23 @@ namespace PeterDB {
     RC PagedFileManager::closeFile(FileHandle &fileHandle) {
         if (fileHandle.fileP != nullptr) {
             rewind(fileHandle.fileP);
+//            void *firstPage = calloc(1,PAGE_SIZE);
+//            fread(firstPage,1,PAGE_SIZE,fileHandle.fileP);
+//            auto * firstP = static_cast<unsigned char*>(firstPage);
+//            ::memcpy(firstP,&fileHandle.numPages,UNSIGNED_SZ);
+//            firstP += UNSIGNED_SZ;
+//            ::memcpy(firstP,&fileHandle.readPageCounter,UNSIGNED_SZ);
+//            firstP += UNSIGNED_SZ;
+//            ::memcpy(firstP,&fileHandle.writePageCounter,UNSIGNED_SZ);
+//            firstP += UNSIGNED_SZ;
+//            ::memcpy(firstP,&fileHandle.appendPageCounter,UNSIGNED_SZ);
+//            firstP -= (3 * UNSIGNED_SZ);
+//            ::fwrite(firstP,PAGE_SIZE,1,fileHandle.fileP);
             fwrite(&fileHandle.numPages,UNSIGNED_SZ,1,fileHandle.fileP);
             fwrite(&fileHandle.readPageCounter,UNSIGNED_SZ,1,fileHandle.fileP);
             fwrite(&fileHandle.writePageCounter,UNSIGNED_SZ,1,fileHandle.fileP);
             fwrite(&fileHandle.appendPageCounter,UNSIGNED_SZ,1,fileHandle.fileP);
+
             fclose(fileHandle.fileP);
             fileHandle.fileP = nullptr;
             return 0;
@@ -114,7 +128,7 @@ namespace PeterDB {
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
         if(this->fileP != nullptr){
-            if(this->numPages < pageNum){
+            if(this->numPages <= pageNum){
                 return -1;
             }
             unsigned seekBytes = (pageNum + 1) * PAGE_SIZE;
