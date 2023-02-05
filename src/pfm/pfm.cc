@@ -117,7 +117,7 @@ namespace PeterDB {
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
         if(this->fileP != nullptr){
-            if(this->numPages < pageNum){
+            if(this->numPages <= pageNum){
                 return -1;
             }
             unsigned seekBytes = (pageNum + 1) * PAGE_SIZE;
