@@ -38,7 +38,7 @@ namespace PeterDB {
     }
 
     bool checkPageFreeSpace(unsigned recSize, unsigned pageNum, FileHandle &fileHandle){
-        auto *page = static_cast<unsigned *>(::malloc(PAGE_SIZE));
+        auto *page = static_cast<unsigned *>(::calloc(1,PAGE_SIZE));
         fileHandle.readPage(pageNum, page);
         unsigned freeBytes = page[(PAGE_SIZE / UNSIGNED_SZ) - 1]; //free bytes is the last 4 bytes
         free(page);
@@ -149,20 +149,41 @@ namespace PeterDB {
         ::memcpy(&freeBytes,pageC,UNSIGNED_SZ);
         pageC -= UNSIGNED_SZ;
 
+        unsigned slotNum = numRecords + 1;
+        //finding the next available slot to fill as we can't leave holes
+        for(unsigned i = 1; i <= numRecords; i++){
+            pageC -= (2 * UNSIGNED_SZ);
+            unsigned curLen;
+            ::memcpy(&curLen,pageC,UNSIGNED_SZ);
+            if(curLen == 0){
+                //empty slot found
+                slotNum = i;
+                break;
+            }
+        }
+        if(slotNum == numRecords + 1){
+            //no empty slots in b/w
+            pageC += (2 * UNSIGNED_SZ * (slotNum - 1));
+        }else{
+            pageC += (2 * UNSIGNED_SZ * slotNum);
+        }
+
+
         unsigned offset = 0;
         if(numRecords != 0){
-            pageC -= (UNSIGNED_SZ * 2 * numRecords);
-            unsigned lastRecOffset = 0;
-            unsigned lastRecLen = 0;
-            ::memcpy(&lastRecLen,pageC, UNSIGNED_SZ);
-            pageC += UNSIGNED_SZ;
-            ::memcpy(&lastRecOffset,pageC, UNSIGNED_SZ);
-            offset = lastRecOffset + lastRecLen;
-            pageC -= UNSIGNED_SZ;
-            pageC += (UNSIGNED_SZ * 2 * numRecords);
+            unsigned maxRecOffset = 0;
+            unsigned maxRecLen = 0;
+            for(unsigned i = 0; i < numRecords; i++){
+                pageC -= UNSIGNED_SZ;
+                ::memcpy(&maxRecOffset, pageC, UNSIGNED_SZ);
+                pageC -= UNSIGNED_SZ;
+                ::memcpy(&maxRecLen, pageC, UNSIGNED_SZ);
+                if(offset < (maxRecLen + maxRecOffset))
+                    offset = maxRecOffset + maxRecLen;
+            }
         }
-        pageC -= (UNSIGNED_SZ * 2 * numRecords);
-        pageC -= (UNSIGNED_SZ * 2);
+        pageC += (UNSIGNED_SZ * 2 * numRecords);
+        pageC -= (UNSIGNED_SZ * 2 * slotNum); //skipping the slots to fill the next slot for new record
 
         ::memcpy(pageC, &recSize, UNSIGNED_SZ); //updating length in slot directory
         pageC += UNSIGNED_SZ;
@@ -174,9 +195,12 @@ namespace PeterDB {
         }
         freeBytes -= recSize;
         freeBytes -= (UNSIGNED_SZ * 2); //new slot size
-        numRecords++;
 
-        pageC += (UNSIGNED_SZ * 2 * numRecords);
+        if(slotNum == numRecords + 1) {
+            numRecords++;
+        }
+
+        pageC += (UNSIGNED_SZ * 2 * slotNum);
         ::memcpy(pageC, &numRecords, UNSIGNED_SZ); //updating metadata, i.e. num of records on page
         pageC += UNSIGNED_SZ;
         ::memcpy(pageC, &freeBytes, UNSIGNED_SZ); //updating num of free bytes on the page.
@@ -185,7 +209,7 @@ namespace PeterDB {
         pageC += offset;
         ::memcpy(pageC, recData, recSize);
 
-        return numRecords;
+        return slotNum;
     }
 
     RC RecordBasedFileManager::insertRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
@@ -193,7 +217,7 @@ namespace PeterDB {
         if(fileHandle.fileP == nullptr)
             return -1;
 
-        void * recordData = ::malloc(PAGE_SIZE);
+        void * recordData = ::calloc(1, PAGE_SIZE);
         unsigned recSize = createRecord(recordDescriptor, data, recordData);
         unsigned pageNumToWrite = findFreePage(recSize,fileHandle);
         void * pageData = ::calloc(1,PAGE_SIZE);
@@ -221,7 +245,7 @@ namespace PeterDB {
         unsigned pageNum = rid.pageNum;
         const unsigned short slotNum = rid.slotNum;
 
-        auto *pageContent = static_cast<unsigned char*>(malloc(PAGE_SIZE));
+        auto *pageContent = static_cast<unsigned char*>(calloc(1,PAGE_SIZE));
         if(pageContent == nullptr)
             return -1;
         if(fileHandle.readPage(pageNum, pageContent) == -1)
@@ -230,6 +254,12 @@ namespace PeterDB {
         pageContent += PAGE_SIZE;
         pageContent -= (UNSIGNED_SZ * 2);
         pageContent -= (slotNum * 2 * UNSIGNED_SZ);
+        unsigned len = 0;
+        ::memcpy(&len, pageContent, UNSIGNED_SZ);
+        //check if trying to read a deleted record
+        if(len == 0)
+            return -1;
+
         unsigned offset = 0;
         pageContent += UNSIGNED_SZ;
         ::memcpy(&offset, pageContent, UNSIGNED_SZ);
@@ -243,7 +273,7 @@ namespace PeterDB {
         pageContent += UNSIGNED_SZ; //skip number of fields i.e. 4 bytes
 
         //create space in memory to store data in API format
-        auto *diskD = static_cast<unsigned char *>(malloc(PAGE_SIZE));
+        auto *diskD = static_cast<unsigned char *>(calloc(1,PAGE_SIZE));
         unsigned recSz = 0;
         unsigned numFields = recordDescriptor.size();
         unsigned nullInd = ceil((double)numFields / 8);
@@ -287,14 +317,14 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const RID &rid) {
-        return 0;
         //find page and slot number and read the page in memory
         unsigned pageNum = rid.pageNum;
         const unsigned short slotNum = rid.slotNum;
-        auto * pageData = static_cast<unsigned char *>(::malloc(PAGE_SIZE));
+        auto * pageData = static_cast<unsigned char *>(::calloc(1,PAGE_SIZE));
         if(pageData == nullptr)
             return -1;
-        fileHandle.readPage(pageNum, pageData);
+        if(fileHandle.readPage(pageNum, pageData) == -1)
+            return -1;
 
         //find the record length and offset from slot directory
         pageData += PAGE_SIZE - UNSIGNED_SZ;
@@ -310,45 +340,57 @@ namespace PeterDB {
         pageData += UNSIGNED_SZ;
         ::memcpy(&currOffset, pageData, UNSIGNED_SZ);
 
-        //find the length & offset of last record
+        //set the current records length to 0 to indicate a deleted record.
         pageData -= UNSIGNED_SZ;
-        pageData -= ((numRec - slotNum)* 2 * PAGE_SIZE);
-        unsigned lastLen;
-        unsigned lastOffset;
-        ::memcpy(&lastLen,pageData,UNSIGNED_SZ);
-        pageData += UNSIGNED_SZ;
-        ::memcpy(&lastOffset,pageData,UNSIGNED_SZ);
+        unsigned newLen = 0;
+        ::memcpy(pageData,&newLen, UNSIGNED_SZ);
 
-        //shift left all records from end of curr record by length bytes
-        pageData -= UNSIGNED_SZ;
-        pageData += (numRec * 2 * UNSIGNED_SZ) + (UNSIGNED_SZ * 2);
+        //check if record already deleted
+        if(currLen == 0)
+            return -1;
+
+        //find the length & offset of last record
+        pageData -= ((numRec - slotNum)* 2 * UNSIGNED_SZ);
+        unsigned lastLen = 0;
+        unsigned lastOffset = 0;
+        for(unsigned i = 0; i < numRec; i++){
+            unsigned len;
+            unsigned off;
+            ::memcpy(&len, pageData, UNSIGNED_SZ);
+            pageData += UNSIGNED_SZ;
+            ::memcpy(&off,pageData,UNSIGNED_SZ);
+            pageData += UNSIGNED_SZ;
+            if(lastOffset < off){
+                lastOffset = off;
+                lastLen = len;
+            }
+        }
+        pageData += (UNSIGNED_SZ * 2);
         pageData -= PAGE_SIZE; //at the start of the page
         unsigned bytesToShift = (lastOffset + lastLen) - (currOffset + currLen);
-        ::memmove(pageData + currOffset, pageData +lastOffset, bytesToShift);
+        ::memmove(pageData + currOffset, pageData + currOffset + currLen, bytesToShift);
 
         //update all values in the slot directory after curr record
         unsigned numValsUp = numRec - slotNum;
         pageData += PAGE_SIZE; //at the end of the page
-        pageData -= (UNSIGNED_SZ * 2); //skipping freebytes  numrec
-        pageData -= (slotNum * 2 * PAGE_SIZE); //
+        pageData -= (UNSIGNED_SZ * 2); //skipping freebytes numrec
+        pageData -= (slotNum * 2 * UNSIGNED_SZ); //
         for(unsigned i = 0; i < numValsUp; i++){
             pageData -= UNSIGNED_SZ;
             unsigned off;
             ::memcpy(&off,pageData,UNSIGNED_SZ);
             off -= currLen;
-            ::memcpy(&off,pageData,UNSIGNED_SZ);
+            ::memcpy(pageData,&off,UNSIGNED_SZ);
             pageData -= UNSIGNED_SZ;
         }
 
         //update metadata i.e.free bytes and number of records
         pageData += (numRec * 2 * UNSIGNED_SZ);
-        numRec -= 1;
-        freeBytes += currLen;
-        ::memcpy(pageData,&numRec,UNSIGNED_SZ);
+        freeBytes += (currLen + (UNSIGNED_SZ * 2)); //record size  + slot directory used by record
         pageData += UNSIGNED_SZ;
         ::memcpy(pageData,&freeBytes,UNSIGNED_SZ);
+        pageData += UNSIGNED_SZ - PAGE_SIZE;
         fileHandle.writePage(pageNum,pageData);
-        //free(pageData);
         return 0;
     }
 
@@ -406,7 +448,7 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, const RID &rid) {
-
+        return 0;
         //find page and slot number and read the page in memory
         unsigned pageNum = rid.pageNum;
         const unsigned short slotNum = rid.slotNum;
