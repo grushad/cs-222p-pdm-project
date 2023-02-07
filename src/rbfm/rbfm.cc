@@ -494,7 +494,62 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
-        return -1;
+        //find page and slot number and read the page in memory
+        unsigned pageNum = rid.pageNum;
+        const unsigned short slotNum = rid.slotNum;
+        auto * pageData = static_cast<unsigned char *>(::calloc(1,PAGE_SIZE));
+        if(pageData == nullptr)
+            return -1;
+        if(fileHandle.readPage(pageNum, pageData) == -1)
+            return -1;
+
+        //find the record length and offset from slot directory
+        pageData += PAGE_SIZE;
+        pageData -= (2 * slotNum * UNSIGNED_SZ + (2 * UNSIGNED_SZ));
+        unsigned len;
+        unsigned offset;
+        ::memcpy(&len, pageData, UNSIGNED_SZ);
+        pageData += UNSIGNED_SZ;
+        ::memcpy(&offset, pageData, UNSIGNED_SZ);
+
+        //check if trying to read a deleted record
+        if(len == 0)
+            return -1;
+
+        pageData -= UNSIGNED_SZ;
+        pageData += (slotNum * 2 * UNSIGNED_SZ + (UNSIGNED_SZ * 2));
+        pageData -= PAGE_SIZE; //start of the page
+
+        pageData += offset; //start of record
+        pageData += UNSIGNED_SZ; //skip num of fields
+
+        unsigned numFields = recordDescriptor.size();
+        unsigned nullInd = ceil((double)numFields / 8);
+        bool* nullBits = getNullBits(pageData, numFields);
+        pageData += nullInd; //skip the null indicator bits
+
+        unsigned startRecData = UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
+        unsigned recLen = 0;
+        unsigned offsetLen = numFields * UNSIGNED_SZ;
+
+        for(unsigned i = 0; i < numFields; i++){
+            if(!nullBits[i]){
+                //attribute is not null
+                Attribute a = recordDescriptor[i];
+                unsigned offsetField;
+                ::memcpy(&offsetField,pageData,UNSIGNED_SZ);
+                unsigned len = offsetField - startRecData;
+                if(::strcmp(a.name.c_str(),attributeName.c_str()) == 0){
+                    //attr found
+                    ::memcpy(data,pageData + offsetLen + recLen,len);
+                    break;
+                }
+                recLen += len;
+            }
+            pageData += UNSIGNED_SZ;
+            offsetLen -= UNSIGNED_SZ;
+        }
+        return 0;
     }
 
     RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
