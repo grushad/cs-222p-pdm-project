@@ -1,5 +1,6 @@
 #include <cmath>
 #include "src/include/rm.h"
+#include <cstring>
 
 namespace PeterDB {
     RelationManager &RelationManager::instance() {
