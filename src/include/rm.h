@@ -8,6 +8,9 @@
 
 namespace PeterDB {
 #define RM_EOF (-1)  // end of a scan operator
+#define TABLES "tables"
+#define COLUMNS "columns"
+#define VARCHAR_SZ 50
 
     // RM_ScanIterator is an iterator to go through tuples
     class RM_ScanIterator {
@@ -96,6 +99,35 @@ namespace PeterDB {
         RelationManager(const RelationManager &);                           // Prevent construction by copying
         RelationManager &operator=(const RelationManager &);                // Prevent assignment
 
+    };
+
+    typedef enum {
+        System = 0, User = 1
+    } TableType;
+
+    class Table{
+    public:
+        Table(std::string tableName, TableType tableType){
+            this->tableName = tableName;
+            this->tableType = tableType;
+            this->fileName = tableName;
+        }
+        //~Table();
+        unsigned getTableId();
+        void setTableId(unsigned tableId);
+        //unsigned getNextTableId();
+        TableType getTableType();
+        std::string getTableName();
+        std::string getFileName();
+        std::vector<Attribute>getRecordDesc();
+        void setRecDesc(const std::vector<Attribute> &attrs);
+
+    protected:
+        std::string tableName;
+        std::string fileName;
+        unsigned tableId;
+        TableType tableType;
+        std::vector<Attribute> recordDesc;
     };
 
 } // namespace PeterDB
