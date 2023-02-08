@@ -63,28 +63,29 @@ namespace PeterDB {
     }
 
 
-    bool* getNullBits(const void * data, unsigned numFields){
+
+    void getNullBits(const void * data, unsigned numFields, vector<bool> &nullvec){
         auto * dataC = static_cast<const unsigned char*>(data);
         unsigned numNullBytes = ceil((double)numFields / 8);
-        static bool nullBits[PAGE_SIZE];
-        fill_n(nullBits, numNullBytes, false);
         unsigned ind = 0;
         for(unsigned i = 0; i < numNullBytes; i++){
             unsigned char c = dataC[i];
             for(unsigned j = 0; j < 8; j++){
                 unsigned power = 8 - j - 1;
                 if((c & (1<<power)) != 0){
-                    nullBits[ind] = true;
+                    nullvec.push_back(true);
+                }else{
+                    nullvec.push_back(false);
                 }
                 ind++;
             }
         }
-        return nullBits;
     }
 
     unsigned createRecord(const std::vector<Attribute> &recordDescriptor, const void *data, void * record){
         unsigned numFields = recordDescriptor.size();
-        bool* nullBits = getNullBits(data, numFields);
+        vector<bool> nullvec;
+        getNullBits(data, numFields,nullvec);
         unsigned recSize = 0;
         auto * recData = static_cast<unsigned char*>(record);
         ::memcpy(recData, &numFields, UNSIGNED_SZ); //
@@ -102,7 +103,7 @@ namespace PeterDB {
 
         for(int i = 0; i < numFields; i++){
             Attribute a = recordDescriptor[i];
-            if(!(nullBits[i])){
+            if(!nullvec[i]){
                 unsigned lenV = a.length;
                 if(a.type == 2){
                     ::memcpy(&lenV, diskData, UNSIGNED_SZ);
@@ -122,7 +123,7 @@ namespace PeterDB {
 
         for(int i = 0; i < numFields; i++){
             Attribute a = recordDescriptor[i];
-            if(!nullBits[i]){
+            if(!nullvec[i]){
                 unsigned len = a.length;
                 if(a.type == 2){
                     ::memcpy(&len,diskData,UNSIGNED_SZ);
@@ -280,7 +281,8 @@ namespace PeterDB {
 
         memcpy(diskD, pageContent, nullInd); //copy null indicator bits to disk format
 
-        bool* nullBits = getNullBits(pageContent, numFields);
+        vector<bool> nullvec;
+        getNullBits(diskD, numFields,nullvec);
         pageContent += nullInd; //skip the null indicator bits
         diskD += nullInd;
         recSz += nullInd;
@@ -290,7 +292,7 @@ namespace PeterDB {
         unsigned recLen = 0;
         unsigned offsetLen = numFields * UNSIGNED_SZ;
         for(int i = 0; i < numFields; i++){
-            if(!nullBits[i]) {
+            if(!nullvec[i]){
                 Attribute a = recordDescriptor[i];
                 unsigned offsetRec;
                 ::memcpy(&offsetRec,pageContent,UNSIGNED_SZ);
@@ -399,12 +401,13 @@ namespace PeterDB {
         unsigned numFields = recordDescriptor.size();
         unsigned nullBytes = ceil((double)numFields / 8);
         auto * recData = static_cast<const unsigned char *>(data);
-        bool* nullBits = getNullBits(data, numFields);
+        vector<bool> nullvec;
+        getNullBits(data, numFields,nullvec);
         recData += nullBytes;
         for(unsigned i = 0; i < numFields; i++){
             Attribute a = recordDescriptor[i];
             std::string name = a.name;
-            if(nullBits[i]){
+            if(nullvec[i]){
                 if(i == numFields -1)
                     out<<name<<": NULL";
                 else
@@ -525,7 +528,8 @@ namespace PeterDB {
 
         unsigned numFields = recordDescriptor.size();
         unsigned nullInd = ceil((double)numFields / 8);
-        bool* nullBits = getNullBits(pageData, numFields);
+        vector<bool> nullvec;
+        getNullBits(data, numFields,nullvec);
         pageData += nullInd; //skip the null indicator bits
 
         unsigned startRecData = UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
@@ -533,7 +537,7 @@ namespace PeterDB {
         unsigned offsetLen = numFields * UNSIGNED_SZ;
 
         for(unsigned i = 0; i < numFields; i++){
-            if(!nullBits[i]){
+            if(!nullvec[i]){
                 //attribute is not null
                 Attribute a = recordDescriptor[i];
                 unsigned offsetField;
@@ -561,3 +565,17 @@ namespace PeterDB {
 
 } // namespace PeterDB
 
+
+/*
+ * outbuffer
+ * 00 00 00 00   00 04 00 00   00 10 00 00   00 4d 69 6c   │ ·············Mil │
+   6c 69 72 6f   6e 4e 69 6c   61 40 63 63   63 00 00 00   │ lironNila@ccc··· │
+   00 00 00 00   00 00 00 00   00 00 00 00   00 00 00 00
+ *
+ *
+ * 00 00 00 00   00 04 00 00   00 10 00 00   00 4d 69 6c   │ ·············Mil │
+   6c 69 72 6f   6e 4e 69 6c   61 40 63 63   63 12 00 00   │ lironNila@ccc··· │
+   00 4d 69 6c   6c 69 72 6f   6e 20 4e 69   6c 6c 61 20   │ ·Milliron Nilla  │
+   63 63 63 66   66 46 40 06   00 00 00 45   6e 20 63 63   │ cccffF@····En cc │
+   63 00 00 00   00 00 00 00   00 00 00 00   00 00 00 00
+ * */
