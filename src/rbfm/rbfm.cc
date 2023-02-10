@@ -282,51 +282,52 @@ namespace PeterDB {
             ::memcpy(&rid0.pageNum,pageContent + TMBSTN_SZ,UNSIGNED_SZ);
             ::memcpy(&rid0.slotNum,pageContent + TMBSTN_SZ + UNSIGNED_SZ,UNSIGNED_SZ);
             readRecord(fileHandle,recordDescriptor,rid0,data);
-        }
-        pageContent += TMBSTN_SZ + RID_SZ;
-        pageContent += UNSIGNED_SZ; //skip number of fields i.e. 4 bytes
+        }else {
+            pageContent += TMBSTN_SZ + RID_SZ;
+            pageContent += UNSIGNED_SZ; //skip number of fields i.e. 4 bytes
 
-        //create space in memory to store data in API format
-        auto *diskD = static_cast<unsigned char *>(calloc(1,PAGE_SIZE));
-        unsigned recSz = 0;
-        unsigned numFields = recordDescriptor.size();
-        unsigned nullInd = ceil((double)numFields / 8);
+            //create space in memory to store data in API format
+            auto *diskD = static_cast<unsigned char *>(calloc(1, PAGE_SIZE));
+            unsigned recSz = 0;
+            unsigned numFields = recordDescriptor.size();
+            unsigned nullInd = ceil((double) numFields / 8);
 
-        memcpy(diskD, pageContent, nullInd); //copy null indicator bits to disk format
+            memcpy(diskD, pageContent, nullInd); //copy null indicator bits to disk format
 
-        vector<bool> nullvec;
-        getNullBits(diskD, numFields,nullvec);
-        pageContent += nullInd; //skip the null indicator bits
-        diskD += nullInd;
-        recSz += nullInd;
+            vector<bool> nullvec;
+            getNullBits(diskD, numFields, nullvec);
+            pageContent += nullInd; //skip the null indicator bits
+            diskD += nullInd;
+            recSz += nullInd;
 
-        //for each field copy its data and length
-        unsigned startRecData = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
-        unsigned recLen = 0;
-        unsigned offsetLen = numFields * UNSIGNED_SZ;
-        for(int i = 0; i < numFields; i++){
-            if(!nullvec[i]){
-                Attribute a = recordDescriptor[i];
-                unsigned offsetRec;
-                ::memcpy(&offsetRec,pageContent,UNSIGNED_SZ);
-                unsigned len = offsetRec - startRecData;
-                if (a.type == 2) {
-                    //type varchar so append length
-                    memcpy(diskD, &len, UNSIGNED_SZ);
-                    recSz += UNSIGNED_SZ;
-                    diskD += UNSIGNED_SZ;
+            //for each field copy its data and length
+            unsigned startRecData = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
+            unsigned recLen = 0;
+            unsigned offsetLen = numFields * UNSIGNED_SZ;
+            for (int i = 0; i < numFields; i++) {
+                if (!nullvec[i]) {
+                    Attribute a = recordDescriptor[i];
+                    unsigned offsetRec;
+                    ::memcpy(&offsetRec, pageContent, UNSIGNED_SZ);
+                    unsigned len = offsetRec - startRecData;
+                    if (a.type == 2) {
+                        //type varchar so append length
+                        memcpy(diskD, &len, UNSIGNED_SZ);
+                        recSz += UNSIGNED_SZ;
+                        diskD += UNSIGNED_SZ;
+                    }
+                    ::memcpy(diskD, pageContent + offsetLen + recLen, len);
+                    recSz += len;
+                    diskD += len;
+                    startRecData += len;
+                    recLen += len;
                 }
-                ::memcpy(diskD, pageContent + offsetLen + recLen, len);
-                recSz += len;
-                diskD += len;
-                startRecData += len;
-                recLen += len;
+                pageContent += UNSIGNED_SZ; //moves ahead by size of offset
+                offsetLen -= UNSIGNED_SZ;
             }
-            pageContent += UNSIGNED_SZ; //moves ahead by size of offset
-            offsetLen -= UNSIGNED_SZ;
+            //at last copy the record data in the API format to data
+            memcpy(data, diskD - recSz, recSz);
         }
-        //at last copy the record data in the API format to data
-        memcpy(data,diskD - recSz,recSz);
         return 0;
     }
 
@@ -386,7 +387,7 @@ namespace PeterDB {
         //check if it is a tombstone record
         unsigned tombstone;
 
-        ::memcpy(&tombstone,pageData + currOffset, TMBSTN_SZ);
+        ::memcpy(&tombstone,pageData + currOffset, sizeof(tombstone));
         if(tombstone == 1){
             //save the next rid and delete that recursively until actual data found;
             RID rid0;
@@ -399,16 +400,16 @@ namespace PeterDB {
         ::memmove(pageData + currOffset, pageData + currOffset + currLen, bytesToShift);
 
         //update all values in the slot directory after curr record
-        unsigned numValsUp = numRec - slotNum;
         pageData += PAGE_SIZE; //at the end of the page
         pageData -= (UNSIGNED_SZ * 2); //skipping free bytes & num rec
-        pageData -= (slotNum * 2 * UNSIGNED_SZ); //
-        for(unsigned i = 0; i < numValsUp; i++){
+        for(unsigned i = 0; i < numRec; i++){
             pageData -= UNSIGNED_SZ;
             unsigned off;
             ::memcpy(&off,pageData,UNSIGNED_SZ);
-            off -= currLen;
-            ::memcpy(pageData,&off,UNSIGNED_SZ);
+            if(off >= (currLen + currOffset)) {
+                off -= currLen;
+                ::memcpy(pageData, &off, UNSIGNED_SZ);
+            }
             pageData -= UNSIGNED_SZ;
         }
 
@@ -477,14 +478,15 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, const RID &rid) {
-        return 0;
+        //return 0;
         //find page and slot number and read the page in memory
         unsigned pageNum = rid.pageNum;
         const unsigned short slotNum = rid.slotNum;
-        auto * pageData = static_cast<unsigned char *>(malloc(PAGE_SIZE));
+        auto * pageData = static_cast<unsigned char *>(calloc(1,PAGE_SIZE));
         if(pageData == nullptr)
             return -1;
-        fileHandle.readPage(pageNum, pageData);
+        if(fileHandle.readPage(pageNum, pageData) == -1)
+            return -1;
 
         //find the record length and offset from slot directory
         pageData += PAGE_SIZE - UNSIGNED_SZ;
@@ -497,70 +499,192 @@ namespace PeterDB {
         unsigned currLen;
         unsigned currOffset;
         ::memcpy(&currLen, pageData, UNSIGNED_SZ);
-        pageData += UNSIGNED_SZ;
-        ::memcpy(&currOffset, pageData, UNSIGNED_SZ);
+        //check if trying to update a deleted record
+        if(currLen == 0)
+            return -1;
+        ::memcpy(&currOffset, pageData + UNSIGNED_SZ, UNSIGNED_SZ);
+        pageData += (2 * slotNum * UNSIGNED_SZ); //skip the slot directory
+
+        //find the length & offset of last record
+        pageData -= (numRec * 2 * UNSIGNED_SZ);
+        unsigned lastLen = 0;
+        unsigned lastOffset = 0;
+        for(unsigned i = 0; i < numRec; i++){
+            unsigned len;
+            unsigned off;
+            ::memcpy(&len, pageData, UNSIGNED_SZ);
+            pageData += UNSIGNED_SZ;
+            ::memcpy(&off,pageData,UNSIGNED_SZ);
+            pageData += UNSIGNED_SZ;
+            if(lastOffset < off){
+                lastOffset = off;
+                lastLen = len;
+            }
+        }
+        pageData += (2 * UNSIGNED_SZ); //skip free bytes and num rec
+        pageData -= PAGE_SIZE; //at the start of page
+        //pageData += currOffset; // at the start of the record
+        unsigned isTmbstn;
+        ::memcpy(&isTmbstn,pageData + currOffset,TMBSTN_SZ);
+        if(isTmbstn == 1)
+            return 0;
 
         //create new record
-        void *newRecord = ::malloc(PAGE_SIZE);
+        void *newRecord = ::calloc(1,PAGE_SIZE);
         unsigned newSize = createRecord(recordDescriptor,data,newRecord);
 
         //check old record size compared to new record size
-        if(newSize < currLen){
-            //shift left
-        }else if(newSize == currLen){
-            //simply do a memcpy
+        if(newSize <= currLen){
+            //copy new record
+            ::memcpy(pageData + currOffset,newRecord,newSize);
+            if(newSize < currLen){
+                //shift left
+                unsigned bytesToShift = (lastOffset + lastLen) - (currOffset + currLen);
+//                if(bytesToShift == 0)
+//                    return 0;
+                ::memmove(pageData + currOffset + newSize, pageData + currOffset + currLen, bytesToShift);
+
+                //update offsets of all other records to the left
+                pageData += PAGE_SIZE; //at the end of the page
+                pageData -= (UNSIGNED_SZ * 2); //skipping free bytes & num rec
+                for(unsigned i = 0; i < numRec; i++){
+                    pageData -= UNSIGNED_SZ;
+                    unsigned off;
+                    ::memcpy(&off,pageData,UNSIGNED_SZ);
+                    if(off >= (currLen + currOffset)) {
+                        off -= (currLen - newSize) ;
+                        ::memcpy(pageData, &off, UNSIGNED_SZ);
+                    }
+                    pageData -= UNSIGNED_SZ;
+                    //update length of record in slot directory
+                    if(slotNum == (i + 1)){
+                        ::memcpy(pageData,&newSize,UNSIGNED_SZ);
+                    }
+                }
+                pageData += (numRec * 2 * UNSIGNED_SZ);
+                pageData += (2 * UNSIGNED_SZ);
+                pageData -= PAGE_SIZE; //at the start of the page
+            }
         }else{
             //new record is longer than old record so check if free space is enough or not
             if(freeBytes >= (newSize - currLen)){
-                //enough free space so shift last records to right and copy new record
+                //enough free space so shift last records to right
+                unsigned bytesToShift = (lastOffset + lastLen) - (currOffset + currLen);
+                ::memmove(pageData + currOffset + newSize, pageData + currOffset + currLen,bytesToShift);
+                ::memcpy(pageData + currOffset,newRecord,newSize);//and copy new record
+
+                //update offset for all other records to the right of curr record to right
+                pageData += PAGE_SIZE; //at the end of the page
+                pageData -= (UNSIGNED_SZ * 2); //skipping free bytes & num rec
+                for(unsigned i = 0; i < numRec; i++){
+                    pageData -= UNSIGNED_SZ;
+                    unsigned off;
+                    ::memcpy(&off,pageData,UNSIGNED_SZ);
+                    if(off >= (currLen + currOffset)) {
+                        off += (newSize - currLen) ;
+                        ::memcpy(pageData, &off, UNSIGNED_SZ);
+                    }
+                    pageData -= UNSIGNED_SZ;
+                    //update length of record in slot directory
+                    if(slotNum == (i + 1)){
+                        ::memcpy(pageData,&newSize,UNSIGNED_SZ);
+                    }
+                }
+                pageData += (numRec * 2 * UNSIGNED_SZ);
+                pageData += (2 * UNSIGNED_SZ);
+                pageData -= PAGE_SIZE; //at the start of the page
+
             }else{
                 //not enough free space to update new record on same page
+                //create a tombstone at current spot
+                //pageData += currOffset; //at the start of the record
+//                unsigned tmb = TMBSTN_SZ + RID_SZ;
+                unsigned newPageNum = findFreePage(newSize,fileHandle);
+                void * page = ::calloc(1,PAGE_SIZE);
+                if(newPageNum < fileHandle.numPages){
+                    fileHandle.readPage(newPageNum, page);
+                }
+                unsigned newSlotNum = writeRecord(page, newSize, newRecord);
+                if(newPageNum == fileHandle.numPages){
+                    fileHandle.appendPage(page);
+                }else{
+                    fileHandle.writePage(newPageNum, page);
+                }
+                short tmbstnVal = 1;
+                ::memcpy(pageData + currOffset, &tmbstnVal, TMBSTN_SZ);
+                ::memcpy(pageData + currOffset + TMBSTN_SZ, &newPageNum, UNSIGNED_SZ);
+                ::memcpy(pageData + currOffset + TMBSTN_SZ + UNSIGNED_SZ, &newSlotNum, UNSIGNED_SZ);
+
+                //update length in slot dir
+//                pageData += PAGE_SIZE; //end of page
+//                pageData -= (slotNum * 2 * UNSIGNED_SZ); //reached the record slot directory
+//                ::memcpy(pageData,&tmb,UNSIGNED_SZ);
+//                pageData += (slotNum * 2 * UNSIGNED_SZ);
+//                pageData -= PAGE_SIZE; //start of page
+                //compact the record
+
+                free(page);
             }
         }
-
-        return -1;
+        fileHandle.writePage(pageNum,pageData);
+        free(pageData);
+        return 0;
     }
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
         //find page and slot number and read the page in memory
-//        unsigned pageNum = rid.pageNum;
-//        const unsigned short slotNum = rid.slotNum;
-//        auto * pageData = static_cast<unsigned char *>(::calloc(1,PAGE_SIZE));
-//        if(pageData == nullptr)
-//            return -1;
-//        if(fileHandle.readPage(pageNum, pageData) == -1)
-//            return -1;
-//
-//        //find the record length and offset from slot directory
-//        pageData += PAGE_SIZE;
-//        pageData -= (2 * slotNum * UNSIGNED_SZ + (2 * UNSIGNED_SZ));
-//        unsigned len;
-//        unsigned offset;
-//        ::memcpy(&len, pageData, UNSIGNED_SZ);
-//        pageData += UNSIGNED_SZ;
-//        ::memcpy(&offset, pageData, UNSIGNED_SZ);
-//
-//        //check if trying to read a deleted record
-//        if(len == 0)
-//            return -1;
-//
-//        pageData -= UNSIGNED_SZ;
-//        pageData += (slotNum * 2 * UNSIGNED_SZ + (UNSIGNED_SZ * 2));
-//        pageData -= PAGE_SIZE; //start of the page
+        unsigned pageNum = rid.pageNum;
+        const unsigned short slotNum = rid.slotNum;
         auto * pageData = static_cast<unsigned char *>(::calloc(1,PAGE_SIZE));
-        readRecord(fileHandle,recordDescriptor,rid,pageData);
+        if(pageData == nullptr)
+            return -1;
+        if(fileHandle.readPage(pageNum, pageData) == -1)
+            return -1;
 
-        //pageData += offset; //start of record
-        pageData += TMBSTN_SZ + RID_SZ + UNSIGNED_SZ; //skip the bytes for tombstone and rid and num of fields
+        //find the record length and offset from slot directory
+        pageData += PAGE_SIZE;
+        pageData -= (2 * slotNum * UNSIGNED_SZ + (2 * UNSIGNED_SZ));
+        unsigned len;
+        unsigned offset;
+        ::memcpy(&len, pageData, UNSIGNED_SZ);
+        pageData += UNSIGNED_SZ;
+        ::memcpy(&offset, pageData, UNSIGNED_SZ);
 
+        //check if trying to read a deleted record
+        if(len == 0)
+            return -1;
+
+        pageData -= UNSIGNED_SZ;
+        pageData += (slotNum * 2 * UNSIGNED_SZ + (UNSIGNED_SZ * 2));
+        pageData -= PAGE_SIZE; //start of the page
+
+        pageData += offset; //start of record
+//        unsigned skipBytesNull = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ; //skip the bytes for tombstone and rid and num of fields
+        pageData += TMBSTN_SZ + RID_SZ + UNSIGNED_SZ;
         unsigned numFields = recordDescriptor.size();
         unsigned nullInd = ceil((double)numFields / 8);
         vector<bool> nullvec;
-        getNullBits(data, numFields,nullvec);
-        pageData += nullInd; //skip the null indicator bits
+        getNullBits(pageData, numFields,nullvec);
+        pageData += nullInd;
+//        unsigned pos;
+//        for(unsigned i = 0; i < numFields; i++){
+//            if(strcmp(recordDescriptor[i].name.c_str(),attributeName.c_str()) == 0){
+//                pos = i;
+//                break;
+//            }
+//        }
+//        if(!nullvec[pos]){
+//            unsigned start = skipBytesNull + nullInd + (UNSIGNED_SZ * numFields);
+//            if(pos != 0){
+//                ::memcpy(&start,pageData + skipBytesNull + nullInd + (UNSIGNED_SZ * (pos - 1)) , UNSIGNED_SZ);
+//            }
+//            unsigned end;
+//            ::memcpy(&end, pageData + skipBytesNull + nullInd + (UNSIGNED_SZ * pos), UNSIGNED_SZ);
+//            ::memcpy(data, pageData + start, end - start);
+//        }
 
-        unsigned startRecData = UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
+        unsigned startRecData = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
         unsigned recLen = 0;
         unsigned offsetLen = numFields * UNSIGNED_SZ;
 
@@ -588,6 +712,15 @@ namespace PeterDB {
                                     const std::string &conditionAttribute, const CompOp compOp, const void *value,
                                     const std::vector<std::string> &attributeNames,
                                     RBFM_ScanIterator &rbfm_ScanIterator) {
+        RID rid;
+        rid.pageNum = 0;
+        rid.slotNum = 1;
+        void * data = ::malloc(PAGE_SIZE);
+//        fileHandle.readPage(rid.pageNum,page);
+//        readAttribute(fileHandle,recordDescriptor,rid,conditionAttribute,data);
+        //start reading from first page
+        //check the first record
+        //check if the reqd attribute matches the condition
         return -1;
     }
 
