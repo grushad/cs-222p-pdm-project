@@ -112,10 +112,9 @@ namespace PeterDB {
             this->tableType = tableType;
             this->fileName = tableName;
         }
-        //~Table();
+        ~Table() = default;;
         unsigned getTableId();
         void setTableId(unsigned tableId);
-        //unsigned getNextTableId();
         TableType getTableType();
         std::string getTableName();
         std::string getFileName();

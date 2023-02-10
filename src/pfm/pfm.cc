@@ -24,8 +24,12 @@ namespace PeterDB {
     PagedFileManager &PagedFileManager::operator=(const PagedFileManager &) = default;
 
     bool fileExists(const std::string &fileName){
-        FILE *file = fopen(fileName.c_str(),"r");
-        return file != nullptr;
+        if (FILE *file = fopen(fileName.c_str(), "r")) {
+            fclose(file);
+            return true;
+        } else {
+            return false;
+        }
     }
 
     RC PagedFileManager::createFile(const std::string &fileName) {
@@ -34,6 +38,8 @@ namespace PeterDB {
             FILE *file = fopen(fileName.c_str(), "w");
             void *data = calloc(1, PAGE_SIZE);
             if(data == nullptr)
+                return -1;
+            if(file == nullptr)
                 return -1;
             fwrite(data, PAGE_SIZE,1, file);
             fclose(file);
@@ -53,14 +59,11 @@ namespace PeterDB {
     RC PagedFileManager::openFile(const std::string &fileName, FileHandle &fileHandle) {
         if(fileExists(fileName)){
             FILE *file = fopen(fileName.c_str(), "rb+");
-
             if(file == nullptr)
                 return -1;
-
             auto *bufferA = static_cast<unsigned *>(malloc(PAGE_SIZE));
             if(bufferA == nullptr)
                 return -1;
-
             fread(bufferA, PAGE_SIZE, 1, file);
             fileHandle.fileP = file;
 

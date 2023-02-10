@@ -256,6 +256,11 @@ namespace PeterDB {
 
         pageContent += PAGE_SIZE;
         pageContent -= (UNSIGNED_SZ * 2);
+        unsigned numRec;
+        ::memcpy(&numRec,pageContent,UNSIGNED_SZ);
+        if(numRec < slotNum)
+            return -2;
+
         pageContent -= (slotNum * 2 * UNSIGNED_SZ);
         unsigned len = 0;
         ::memcpy(&len, pageContent, UNSIGNED_SZ);
@@ -367,8 +372,8 @@ namespace PeterDB {
 
         //find the length & offset of last record
         pageData -= ((numRec - slotNum)* 2 * UNSIGNED_SZ);
-        unsigned lastLen = 0;
-        unsigned lastOffset = 0;
+        unsigned lastLen = currLen;
+        unsigned lastOffset = currOffset;
         for(unsigned i = 0; i < numRec; i++){
             unsigned len;
             unsigned off;
@@ -507,8 +512,8 @@ namespace PeterDB {
 
         //find the length & offset of last record
         pageData -= (numRec * 2 * UNSIGNED_SZ);
-        unsigned lastLen = 0;
-        unsigned lastOffset = 0;
+        unsigned lastLen = currLen;
+        unsigned lastOffset = currOffset;
         for(unsigned i = 0; i < numRec; i++){
             unsigned len;
             unsigned off;
