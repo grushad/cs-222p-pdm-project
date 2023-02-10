@@ -42,6 +42,8 @@ namespace PeterDB {
     ********************************************************************/
 
 # define RBFM_EOF (-1)  // end of a scan operator
+#define TMBSTN_SZ 1
+#define RID_SZ (2 * UNSIGNED_SZ)
 
     //  RBFM_ScanIterator is an iterator to go through records
     //  The way to use it is like the following:
@@ -64,6 +66,10 @@ namespace PeterDB {
         RC getNextRecord(RID &rid, void *data) { return RBFM_EOF; };
 
         RC close() { return -1; };
+
+        RID currRid;
+        void * resultData;
+        void *currPage;
     };
 
     class RecordBasedFileManager {
