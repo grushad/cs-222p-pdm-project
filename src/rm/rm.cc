@@ -21,26 +21,26 @@ namespace PeterDB {
     RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
     //implementing rm Table class functions
-    unsigned Table::getTableId(){
+    unsigned TableManager::getTableId(){
         return this->tableId;
     }
-    TableType Table::getTableType() {
+    TableType TableManager::getTableType() {
         return this->tableType;
     }
-    std::string Table::getTableName() {
+    std::string TableManager::getTableName() {
         return this->tableName;
     }
-    std::string Table::getFileName(){
+    std::string TableManager::getFileName(){
         return this->fileName;
     }
-    std::vector<Attribute> Table::getRecordDesc(){
+    std::vector<Attribute> TableManager::getRecordDesc(){
         return this->recordDesc;
     }
-    void Table::setTableId(unsigned tableId) {
+    void TableManager::setTableId(unsigned tableId) {
         this->tableId = tableId;
     }
 
-    void Table::setRecDesc(const std::vector<Attribute> &attrs){
+    void TableManager::setRecDesc(const std::vector<Attribute> &attrs){
         if(this->getTableType() == User){
             this->recordDesc = attrs;
             return;
@@ -106,7 +106,7 @@ namespace PeterDB {
             this->recordDesc.push_back(colPos);
         }
     }
-    unsigned createTablesData(void *data, Table table){
+    unsigned createTablesData(void *data, TableManager table){
         unsigned tableId = table.getTableId();
         std::string tableName = table.getTableName();
         std::string fileName = table.getFileName();
@@ -207,8 +207,8 @@ namespace PeterDB {
         if(rmfileExists(TABLES) || rmfileExists(COLUMNS))
             return -1;
 
-        Table table(TABLES,System);
-        Table column(COLUMNS,System);
+        TableManager table(TABLES,System);
+        TableManager column(COLUMNS,System);
 
         rbfm.createFile(TABLES);
         rbfm.createFile(COLUMNS);
@@ -283,10 +283,10 @@ namespace PeterDB {
         if(rbfm.createFile(tableName) == -1)
             return -1;
 
-        Table table(TABLES,System);
+        TableManager table(TABLES,System);
         table.setRecDesc(attrs);
 
-        Table newTable(tableName,User);
+        TableManager newTable(tableName,User);
         newTable.setTableId(++maxTableId);
         newTable.setRecDesc(attrs);
 
@@ -295,7 +295,7 @@ namespace PeterDB {
         RID rid;
         rbfm.insertRecord(tableFileHandle,table.getRecordDesc(), data,rid);
 
-        Table column(COLUMNS,System);
+        TableManager column(COLUMNS,System);
         column.setRecDesc(attrs);
         std::vector<Attribute> colRecDesc = column.getRecordDesc();
 
@@ -325,13 +325,13 @@ namespace PeterDB {
         FileHandle tableFileHandle;
         if(rbfm.openFile(TABLES,tableFileHandle) == -1)
             return -1;
-        Table table(TABLES,System);
+        TableManager table(TABLES,System);
         table.setRecDesc(attrs);
 
         FileHandle colFileHandle;
         if(rbfm.openFile(COLUMNS,colFileHandle) == -1)
             return -1;
-        Table column(COLUMNS,System);
+        TableManager column(COLUMNS,System);
         column.setRecDesc(attrs);
 
 //        FileHandle userTableFileHandle;

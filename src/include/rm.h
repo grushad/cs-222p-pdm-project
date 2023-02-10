@@ -105,14 +105,14 @@ namespace PeterDB {
         System = 0, User = 1
     } TableType;
 
-    class Table{
+    class TableManager{
     public:
-        Table(std::string tableName, TableType tableType){
+        TableManager(std::string tableName, TableType tableType){
             this->tableName = tableName;
             this->tableType = tableType;
             this->fileName = tableName;
         }
-        ~Table() = default;;
+        ~TableManager() = default;;
         unsigned getTableId();
         void setTableId(unsigned tableId);
         TableType getTableType();
