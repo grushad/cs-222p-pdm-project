@@ -567,6 +567,9 @@ namespace PeterDB {
                     }
                 }
                 pageData += (numRec * 2 * UNSIGNED_SZ);
+                //update free bytes
+                unsigned newFreeBytes = freeBytes + (currLen - newSize);
+                ::memcpy(pageData + UNSIGNED_SZ,&newFreeBytes,UNSIGNED_SZ);
                 pageData += (2 * UNSIGNED_SZ);
                 pageData -= PAGE_SIZE; //at the start of the page
             }
@@ -596,6 +599,9 @@ namespace PeterDB {
                     }
                 }
                 pageData += (numRec * 2 * UNSIGNED_SZ);
+                //update free bytes
+                unsigned newFreeBytes = freeBytes - (newSize - currLen);
+                ::memcpy(pageData + UNSIGNED_SZ,&newFreeBytes,UNSIGNED_SZ);
                 pageData += (2 * UNSIGNED_SZ);
                 pageData -= PAGE_SIZE; //at the start of the page
 

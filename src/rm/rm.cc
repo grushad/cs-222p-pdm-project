@@ -372,6 +372,8 @@ namespace PeterDB {
                 std::string name(reinterpret_cast<char const *>(data), len);
                 currTableName = name;
                 rid.slotNum++;
+                data -= (2 * UNSIGNED_SZ);
+                data -= nullBytes;
             }
         }
 
@@ -399,7 +401,7 @@ namespace PeterDB {
                         found = true;
                         Attribute a;
                         unsigned lenName;
-                        memcpy(&lenName,data,lenName);
+                        memcpy(&lenName,data,UNSIGNED_SZ);
                         data += UNSIGNED_SZ;//skipping length field
 
                         std::string colName(reinterpret_cast<char const *>(data), lenName);
@@ -410,11 +412,15 @@ namespace PeterDB {
                         data += UNSIGNED_SZ;
                         memcpy(&a.length,data, UNSIGNED_SZ);
                         attrs.push_back(a);
+                        data -= (2 * UNSIGNED_SZ);
+                        data -= lenName;
                     }else{
                         if(found){
                             break;
                         }
                     }
+                    data -= UNSIGNED_SZ;
+                    data -= nullBytes;
                     rid.slotNum++;
                 }
             }
