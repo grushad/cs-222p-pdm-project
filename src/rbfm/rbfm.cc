@@ -699,10 +699,13 @@ namespace PeterDB {
                 Attribute a = recordDescriptor[i];
                 unsigned offsetField;
                 ::memcpy(&offsetField,pageData,UNSIGNED_SZ);
-                unsigned len = offsetField - startRecData;
+                unsigned len = offsetField - startRecData - recLen;
                 if(::strcmp(a.name.c_str(),attributeName.c_str()) == 0){
                     //attr found
-                    ::memcpy(data,pageData + offsetLen + recLen,len);
+                    auto * dataC = static_cast<unsigned char*>(::calloc(1,len + 1));
+                    dataC++;
+                    ::memcpy(dataC,pageData + offsetLen + recLen,len);
+                    memcpy(data,dataC - 1,len + 1);
                     break;
                 }
                 recLen += len;
