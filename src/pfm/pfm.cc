@@ -27,9 +27,8 @@ namespace PeterDB {
         if (FILE *file = fopen(fileName.c_str(), "r")) {
             fclose(file);
             return true;
-        } else {
-            return false;
         }
+        return false;
     }
 
     RC PagedFileManager::createFile(const std::string &fileName) {
@@ -37,9 +36,7 @@ namespace PeterDB {
             //write basic metadata to file i.e. one page
             FILE *file = fopen(fileName.c_str(), "w");
             void *data = calloc(1, PAGE_SIZE);
-            if(data == nullptr)
-                return -1;
-            if(file == nullptr)
+            if(data == nullptr || file == nullptr)
                 return -1;
             fwrite(data, PAGE_SIZE,1, file);
             fclose(file);
@@ -105,11 +102,8 @@ namespace PeterDB {
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
-        if(this->fileP != nullptr){
-            if(this->numPages <= pageNum){
-                return -1;
-            }
-            unsigned seekBytes = (pageNum + 1) * PAGE_SIZE;
+        if(this->fileP != nullptr && this->numPages > pageNum){
+            unsigned seekBytes = (pageNum + 1) * PAGE_SIZE; //skipping the hidden page
             fseek(this->fileP,seekBytes, SEEK_SET);
             fread(data, PAGE_SIZE, 1, this->fileP);
             this->readPageCounter += 1;
@@ -119,11 +113,8 @@ namespace PeterDB {
     }
 
     RC FileHandle::writePage(PageNum pageNum, const void *data) {
-        if(this->fileP != nullptr){
-            if(this->numPages <= pageNum){
-                return -1;
-            }
-            unsigned seekBytes = (pageNum + 1) * PAGE_SIZE;
+        if(this->fileP != nullptr && this->numPages > pageNum){
+            unsigned seekBytes = (pageNum + 1) * PAGE_SIZE; //skipping the hidden page
             fseek(this->fileP,seekBytes, SEEK_SET);
             fwrite(data, PAGE_SIZE, 1, this->fileP);
             this->writePageCounter += 1;
@@ -134,11 +125,10 @@ namespace PeterDB {
 
     RC FileHandle::appendPage(const void *data) {
         if(this->fileP != nullptr){
-            unsigned seekBytes = (this->numPages + 1) * PAGE_SIZE;
+            unsigned seekBytes = (++this->numPages) * PAGE_SIZE;
             fseek(this->fileP, seekBytes, SEEK_SET);
             fwrite(data, PAGE_SIZE,1, this->fileP);
             this->appendPageCounter += 1;
-            this->numPages += 1;
             return 0;
         }
         return -1;

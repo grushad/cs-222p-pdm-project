@@ -39,6 +39,8 @@ namespace PeterDB {
 
     bool checkPageFreeSpace(unsigned recSize, unsigned pageNum, FileHandle &fileHandle){
         auto *page = static_cast<unsigned *>(::calloc(1,PAGE_SIZE));
+        if(page == nullptr)
+            return  -1;
         fileHandle.readPage(pageNum, page);
         unsigned freeBytes = page[(PAGE_SIZE / UNSIGNED_SZ) - 1]; //free bytes is the last 4 bytes
         free(page);
@@ -333,6 +335,7 @@ namespace PeterDB {
             //at last copy the record data in the API format to data
             memcpy(data, diskD - recSz, recSz);
         }
+//        free(pageContent);
         return 0;
     }
 
@@ -425,6 +428,7 @@ namespace PeterDB {
         ::memcpy(pageData,&freeBytes,UNSIGNED_SZ);
         pageData += UNSIGNED_SZ - PAGE_SIZE;
         fileHandle.writePage(pageNum,pageData);
+        free(pageData);
         return 0;
     }
 
@@ -483,7 +487,6 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::updateRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                             const void *data, const RID &rid) {
-        //return 0;
         //find page and slot number and read the page in memory
         unsigned pageNum = rid.pageNum;
         const unsigned short slotNum = rid.slotNum;
@@ -528,7 +531,6 @@ namespace PeterDB {
         }
         pageData += (2 * UNSIGNED_SZ); //skip free bytes and num rec
         pageData -= PAGE_SIZE; //at the start of page
-        //pageData += currOffset; // at the start of the record
         unsigned isTmbstn;
         ::memcpy(&isTmbstn,pageData + currOffset,TMBSTN_SZ);
         if(isTmbstn == 1)
@@ -545,8 +547,6 @@ namespace PeterDB {
             if(newSize < currLen){
                 //shift left
                 unsigned bytesToShift = (lastOffset + lastLen) - (currOffset + currLen);
-//                if(bytesToShift == 0)
-//                    return 0;
                 ::memmove(pageData + currOffset + newSize, pageData + currOffset + currLen, bytesToShift);
 
                 //update offsets of all other records to the left
@@ -608,8 +608,6 @@ namespace PeterDB {
             }else{
                 //not enough free space to update new record on same page
                 //create a tombstone at current spot
-                //pageData += currOffset; //at the start of the record
-//                unsigned tmb = TMBSTN_SZ + RID_SZ;
                 unsigned newPageNum = findFreePage(newSize,fileHandle);
                 void * page = ::calloc(1,PAGE_SIZE);
                 if(newPageNum < fileHandle.numPages){
@@ -625,15 +623,6 @@ namespace PeterDB {
                 ::memcpy(pageData + currOffset, &tmbstnVal, TMBSTN_SZ);
                 ::memcpy(pageData + currOffset + TMBSTN_SZ, &newPageNum, UNSIGNED_SZ);
                 ::memcpy(pageData + currOffset + TMBSTN_SZ + UNSIGNED_SZ, &newSlotNum, UNSIGNED_SZ);
-
-                //update length in slot dir
-//                pageData += PAGE_SIZE; //end of page
-//                pageData -= (slotNum * 2 * UNSIGNED_SZ); //reached the record slot directory
-//                ::memcpy(pageData,&tmb,UNSIGNED_SZ);
-//                pageData += (slotNum * 2 * UNSIGNED_SZ);
-//                pageData -= PAGE_SIZE; //start of page
-                //compact the record
-
                 free(page);
             }
         }
@@ -642,15 +631,26 @@ namespace PeterDB {
         return 0;
     }
 
+    unsigned getAttrNum(const std::string &attrName, const std::vector<Attribute> &recordDescriptor){
+        unsigned sz = recordDescriptor.size();
+        for(auto i = 0; i < sz; i++){
+            if(::strcmp(attrName.c_str(),recordDescriptor[i].name.c_str()) == 0){
+                return i;
+            }
+        }
+        return 0;
+    }
+
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
         //find page and slot number and read the page in memory
         unsigned pageNum = rid.pageNum;
         const unsigned short slotNum = rid.slotNum;
-        auto * pageData = static_cast<unsigned char *>(::calloc(1,PAGE_SIZE));
-        if(pageData == nullptr)
+        void *temp = ::calloc(1, PAGE_SIZE);
+        auto *pageData = static_cast<unsigned char *>(temp);
+        if (pageData == nullptr)
             return -1;
-        if(fileHandle.readPage(pageNum, pageData) == -1)
+        if (fileHandle.readPage(pageNum, pageData) == -1)
             return -1;
 
         //find the record length and offset from slot directory
@@ -663,7 +663,7 @@ namespace PeterDB {
         ::memcpy(&offset, pageData, UNSIGNED_SZ);
 
         //check if trying to read a deleted record
-        if(len == 0)
+        if (len == 0)
             return -1;
 
         pageData -= UNSIGNED_SZ;
@@ -671,29 +671,12 @@ namespace PeterDB {
         pageData -= PAGE_SIZE; //start of the page
 
         pageData += offset; //start of record
-//        unsigned skipBytesNull = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ; //skip the bytes for tombstone and rid and num of fields
         pageData += TMBSTN_SZ + RID_SZ + UNSIGNED_SZ;
         unsigned numFields = recordDescriptor.size();
-        unsigned nullInd = ceil((double)numFields / 8);
+        unsigned nullInd = ceil((double) numFields / 8);
         vector<bool> nullvec;
-        getNullBits(pageData, numFields,nullvec);
+        getNullBits(pageData, numFields, nullvec);
         pageData += nullInd;
-//        unsigned pos;
-//        for(unsigned i = 0; i < numFields; i++){
-//            if(strcmp(recordDescriptor[i].name.c_str(),attributeName.c_str()) == 0){
-//                pos = i;
-//                break;
-//            }
-//        }
-//        if(!nullvec[pos]){
-//            unsigned start = skipBytesNull + nullInd + (UNSIGNED_SZ * numFields);
-//            if(pos != 0){
-//                ::memcpy(&start,pageData + skipBytesNull + nullInd + (UNSIGNED_SZ * (pos - 1)) , UNSIGNED_SZ);
-//            }
-//            unsigned end;
-//            ::memcpy(&end, pageData + skipBytesNull + nullInd + (UNSIGNED_SZ * pos), UNSIGNED_SZ);
-//            ::memcpy(data, pageData + start, end - start);
-//        }
 
         unsigned startRecData = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
         unsigned recLen = 0;
@@ -705,13 +688,20 @@ namespace PeterDB {
                 Attribute a = recordDescriptor[i];
                 unsigned offsetField;
                 ::memcpy(&offsetField,pageData,UNSIGNED_SZ);
-                unsigned len = offsetField - startRecData - recLen;
+                unsigned attrLen = offsetField - startRecData - recLen;
                 if(::strcmp(a.name.c_str(),attributeName.c_str()) == 0){
                     //attr found
-                    auto * dataC = static_cast<unsigned char*>(::calloc(1,len + 1));
+                    void *tmp = ::calloc(1,attrLen + 1 + UNSIGNED_SZ);
+                    auto * dataC = static_cast<unsigned char*>(tmp);
                     dataC++;
-                    ::memcpy(dataC,pageData + offsetLen + recLen,len);
+                    if(a.type == 2){
+                        //varchar type so append length
+                        ::memcpy(dataC,&attrLen,UNSIGNED_SZ);
+                        dataC += UNSIGNED_SZ;
+                    }
+                    memcpy(dataC,pageData + offsetLen + recLen,attrLen);
                     memcpy(data,dataC - 1,len + 1);
+                    free(tmp);
                     break;
                 }
                 recLen += len;
@@ -719,23 +709,68 @@ namespace PeterDB {
             pageData += UNSIGNED_SZ;
             offsetLen -= UNSIGNED_SZ;
         }
+        free(temp);
         return 0;
     }
 
-    RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                    const std::string &conditionAttribute, const CompOp compOp, const void *value,
-                                    const std::vector<std::string> &attributeNames,
-                                    RBFM_ScanIterator &rbfm_ScanIterator) {
-        RID rid;
-        rid.pageNum = 0;
-        rid.slotNum = 1;
-        void * data = ::malloc(PAGE_SIZE);
-//        fileHandle.readPage(rid.pageNum,page);
-//        readAttribute(fileHandle,recordDescriptor,rid,conditionAttribute,data);
-        //start reading from first page
-        //check the first record
-        //check if the reqd attribute matches the condition
-        return -1;
-    }
+        RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                                        const std::string &conditionAttribute, const CompOp compOp, const void *value,
+                                        const std::vector<std::string> &attributeNames,
+                                        RBFM_ScanIterator &rbfm_ScanIterator) {
+            RID rid;
+            rid.pageNum = 0;
+            rid.slotNum = 1;
+            //fileHandle.readPage(rid.pageNum,rbfm_ScanIterator.currPage);
+            rbfm_ScanIterator.currRid = rid;
+            rbfm_ScanIterator.fileHandle = fileHandle;
+            rbfm_ScanIterator.recordDescriptor = recordDescriptor;
+            rbfm_ScanIterator.compOp = compOp;
+            rbfm_ScanIterator.conditionAttr = conditionAttribute;
+            rbfm_ScanIterator.value = &value;
+            rbfm_ScanIterator.attributeNames = attributeNames;
+            return -1;
+        }
+
+        RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+            RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
+            void *attrData = ::malloc(PAGE_SIZE);
+//            rbfm.readAttribute(this->fileHandle, this->recordDescriptor, this->currRid, this->conditionAttr, attrData);
+//            auto *temp = static_cast<unsigned char*>(attrData);
+//            unsigned pos = getAttrNum(this->conditionAttr,this->recordDescriptor);
+//            unsigned len = UNSIGNED_SZ;
+//            if(this->recordDescriptor[pos].type == 2){
+//                ::memcpy(&len,++temp, UNSIGNED_SZ);
+//                temp += UNSIGNED_SZ;
+//            }
+
+            bool flag = true;
+            while(flag){
+                rbfm.readAttribute(this->fileHandle, this->recordDescriptor, this->currRid, this->conditionAttr, attrData);
+                auto *temp = static_cast<unsigned char*>(attrData);
+                unsigned pos = getAttrNum(this->conditionAttr,this->recordDescriptor);
+                unsigned len = UNSIGNED_SZ;
+                if(this->recordDescriptor[pos].type == 2){
+                    ::memcpy(&len,++temp, UNSIGNED_SZ);
+                    temp += UNSIGNED_SZ;
+                }
+                if (::memcmp(temp, this->value, len) == 0) {
+                    rid = currRid;
+                    //get other attributes of this rid
+                    flag = false;
+                }else{
+                    this->currRid.slotNum++;
+                    //check if all records scanned
+                    unsigned numRec = 0;
+                    if(this->currRid.slotNum > numRec){
+                        this->currRid.pageNum++;
+                    }
+                    if(this->currRid.pageNum == fileHandle.numPages)
+                        flag = false;
+                }
+            }
+
+            return RBFM_EOF;
+        }
+
 
 }
