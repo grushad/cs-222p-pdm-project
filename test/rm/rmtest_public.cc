@@ -1335,7 +1335,7 @@ namespace PeterDBTesting {
         outBuffer = malloc(bufSize);
 
         // GetAttributes
-        ASSERT_EQ(rm.getAttributes("Tables", attrs), success) << "RelationManager::getAttributes() should succeed.";
+            ASSERT_EQ(rm.getAttributes("Tables", attrs), success) << "RelationManager::getAttributes() should succeed.";
 
         // Try to insert a row - should not succeed
         nullsIndicator = initializeNullFieldsIndicator(attrs);

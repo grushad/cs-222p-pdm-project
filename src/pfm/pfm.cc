@@ -102,7 +102,9 @@ namespace PeterDB {
     FileHandle::~FileHandle() = default;
 
     RC FileHandle::readPage(PageNum pageNum, void *data) {
-        if(this->fileP != nullptr && this->numPages > pageNum){
+        if(this->numPages <= pageNum)
+            return -3;
+        if(this->fileP != nullptr){
             unsigned seekBytes = (pageNum + 1) * PAGE_SIZE; //skipping the hidden page
             fseek(this->fileP,seekBytes, SEEK_SET);
             fread(data, PAGE_SIZE, 1, this->fileP);

@@ -8,8 +8,8 @@
 
 namespace PeterDB {
 #define RM_EOF (-1)  // end of a scan operator
-#define TABLES "tables"
-#define COLUMNS "columns"
+#define TABLES "Tables"
+#define COLUMNS "Columns"
 #define VARCHAR_SZ 50
 
     // RM_ScanIterator is an iterator to go through tuples
@@ -23,6 +23,7 @@ namespace PeterDB {
         RC getNextTuple(RID &rid, void *data);
 
         RC close();
+        RBFM_ScanIterator rbfmScanIterator;
     };
 
     // RM_IndexScanIterator is an iterator to go through index entries
@@ -107,19 +108,27 @@ namespace PeterDB {
 
     class TableManager{
     public:
-        TableManager(std::string tableName, TableType tableType){
+        TableManager(const std::string &tableName, const std::vector<Attribute> &attrs ){
             this->tableName = tableName;
-            this->tableType = tableType;
+            this->tableType = User;
+            if(strcmp(tableName.c_str(),TABLES) == 0 || strcmp(tableName.c_str(),COLUMNS) == 0){
+                this->tableType = System;
+                this->setCatalogRecDesc();
+            }else{
+                this->recordDesc = attrs;
+            }
             this->fileName = tableName;
+            //this->tableId = getNextTableId();
         }
         ~TableManager() = default;;
         unsigned getTableId();
-        void setTableId(unsigned tableId);
+//        void setTableId(unsigned tableId);
         TableType getTableType();
         std::string getTableName();
         std::string getFileName();
         std::vector<Attribute>getRecordDesc();
-        void setRecDesc(const std::vector<Attribute> &attrs);
+        void setCatalogRecDesc();
+        unsigned getNextTableId();
 
     protected:
         std::string tableName;

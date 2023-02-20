@@ -3862,7 +3862,7 @@ return from_json(j, val);
 
 /// namespace to hold default `from_json` function
 /// to see why this is required:
-/// http://www.open-std.org/jtc1/sc22/wg21/docs/papers/2015/n4381.html
+/// http://www.open-std.org/jtc1/sc22/wg21/docs.txt/papers/2015/n4381.html
 namespace
 {
 constexpr const auto& from_json = detail::static_const<detail::from_json_fn>::value;
@@ -18832,7 +18832,7 @@ public:
     @a indent_char\, and @a ensure_ascii parameters to the result of the
     serialization.,dump}
 
-    @see https://docs.python.org/2/library/json.html#json.dump
+    @see https://docs.txt.python.org/2/library/json.html#json.dump
 
     @since version 1.0.0; indentation character @a indent_char, option
            @a ensure_ascii and exceptions added in version 3.0.0; error
@@ -22333,7 +22333,7 @@ m_value.object->insert(first.m_it.object_iterator, last.m_it.object_iterator);
 
     @liveexample{The example shows how `update()` is used.,update}
 
-    @sa https://docs.python.org/3.6/library/stdtypes.html#dict.update
+    @sa https://docs.txt.python.org/3.6/library/stdtypes.html#dict.update
 
     @since version 3.0.0
     */
@@ -22384,7 +22384,7 @@ m_value.object->operator[](it.key()) = it.value();
 
     @liveexample{The example shows how `update()` is used__range.,update}
 
-    @sa https://docs.python.org/3.6/library/stdtypes.html#dict.update
+    @sa https://docs.txt.python.org/3.6/library/stdtypes.html#dict.update
 
     @since version 3.0.0
     */

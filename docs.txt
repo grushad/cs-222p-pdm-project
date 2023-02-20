@@ -1,0 +1,30 @@
+#PFM
+Functions:
+
+createFile()
+closeFile()
+openFile()
+destroyFile()
+
+custom method added:
+fileExists()
+
+Member variables:
+
+#File Handle
+Functions:
+
+Member variables:
+
+
+#RBFM
+
+updateRecord()
+1. Update the record format as follows:
+Starting from left to right:
+1 byte to indicate if it is a tombstone record or not
+8 bytes to indicate the actual RID of this record. RID: pagenum and slotnum
+4 bytes to store num of fields
+ceil(num of fields / 8) bytes to indicate the null bits of the record
+4 * num of fields to indicate offset data
+next bytes to store actual data

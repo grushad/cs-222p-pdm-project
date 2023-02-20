@@ -3,6 +3,7 @@
 #include <cstring>
 #include <iostream>
 #include <algorithm>
+#include <unordered_set>
 
 using namespace std;
 namespace PeterDB {
@@ -226,9 +227,9 @@ namespace PeterDB {
         unsigned pageNumToWrite = findFreePage(recSize,fileHandle);
         void * pageData = ::calloc(1,PAGE_SIZE);
 
-        if(pageNumToWrite < fileHandle.numPages){
-            fileHandle.readPage(pageNumToWrite, pageData);
-        }
+        //if(pageNumToWrite < fileHandle.numPages){
+        fileHandle.readPage(pageNumToWrite, pageData);
+        //}
         unsigned slotNum = writeRecord(pageData, recSize, recordData);
         if(pageNumToWrite == fileHandle.numPages){
             fileHandle.appendPage(pageData);
@@ -242,26 +243,38 @@ namespace PeterDB {
         return 0;
     }
 
-    RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                          const RID &rid, void *data) {
-        if(fileHandle.fileP == nullptr)
-            return -1;
+    RC getAttrIds(const vector<Attribute> &recordDescriptor, const vector<string> &attributeNames, unordered_set<unsigned> &ids){
+        unordered_set<string> attrNames;
+        for(const string s: attributeNames)
+            attrNames.insert(s);
+        const unsigned sz = recordDescriptor.size();
+        for(unsigned i = 0; i < sz; i++){
+            if(attrNames.find(recordDescriptor[i].name) != attrNames.end()){
+                ids.insert(i);
+            }
+        }
+        return 0;
+    }
 
+    RC getRecordAttributes(FileHandle &fileHandle, const RID rid, const vector<Attribute> &recordDescriptor, const vector<string> &attributeNames, void *data){
         unsigned pageNum = rid.pageNum;
         const unsigned short slotNum = rid.slotNum;
 
         auto *pageContent = static_cast<unsigned char*>(calloc(1,PAGE_SIZE));
         if(pageContent == nullptr)
             return -1;
-        if(fileHandle.readPage(pageNum, pageContent) == -1)
-            return -1;
+        RC rc = fileHandle.readPage(pageNum, pageContent);
+        if(rc == -1)
+            return -1; //General error
+        if(rc == -3)
+            return -3; //EOF
 
         pageContent += PAGE_SIZE;
         pageContent -= (UNSIGNED_SZ * 2);
         unsigned numRec;
         ::memcpy(&numRec,pageContent,UNSIGNED_SZ);
         if(numRec < slotNum)
-            return -2;
+            return -2; //reached end of records
 
         pageContent -= (slotNum * 2 * UNSIGNED_SZ);
         unsigned len = 0;
@@ -275,8 +288,7 @@ namespace PeterDB {
         ::memcpy(&offset, pageContent, UNSIGNED_SZ);
 
         pageContent -= UNSIGNED_SZ;
-        pageContent += (slotNum * 2 * UNSIGNED_SZ);
-        pageContent += (UNSIGNED_SZ * 2);
+        pageContent += (slotNum * 2 * UNSIGNED_SZ + (UNSIGNED_SZ * 2));
         pageContent -= PAGE_SIZE; //start of the page
 
         pageContent += offset; //reached start of record
@@ -288,8 +300,8 @@ namespace PeterDB {
             RID rid0;
             ::memcpy(&rid0.pageNum,pageContent + TMBSTN_SZ,UNSIGNED_SZ);
             ::memcpy(&rid0.slotNum,pageContent + TMBSTN_SZ + UNSIGNED_SZ,UNSIGNED_SZ);
-            readRecord(fileHandle,recordDescriptor,rid0,data);
-        }else {
+            getRecordAttributes(fileHandle,rid0, recordDescriptor,attributeNames,data);
+        }else{
             pageContent += TMBSTN_SZ + RID_SZ;
             pageContent += UNSIGNED_SZ; //skip number of fields i.e. 4 bytes
 
@@ -307,6 +319,10 @@ namespace PeterDB {
             diskD += nullInd;
             recSz += nullInd;
 
+            //get the relevant attribute ids as reqd
+            unordered_set<unsigned> attrIds;
+            getAttrIds(recordDescriptor,attributeNames,attrIds);
+
             //for each field copy its data and length
             unsigned startRecData = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
             unsigned recLen = 0;
@@ -319,13 +335,17 @@ namespace PeterDB {
                     unsigned len = offsetRec - startRecData;
                     if (a.type == 2) {
                         //type varchar so append length
-                        memcpy(diskD, &len, UNSIGNED_SZ);
-                        recSz += UNSIGNED_SZ;
-                        diskD += UNSIGNED_SZ;
+                        if(attrIds.find(i) != attrIds.end()){
+                            memcpy(diskD, &len, UNSIGNED_SZ);
+                            recSz += UNSIGNED_SZ;
+                            diskD += UNSIGNED_SZ;
+                        }
                     }
-                    ::memcpy(diskD, pageContent + offsetLen + recLen, len);
-                    recSz += len;
-                    diskD += len;
+                    if(attrIds.find(i) != attrIds.end()){
+                        memcpy(diskD, pageContent + offsetLen + recLen, len);
+                        recSz += len;
+                        diskD += len;
+                    }
                     startRecData += len;
                     recLen += len;
                 }
@@ -335,8 +355,19 @@ namespace PeterDB {
             //at last copy the record data in the API format to data
             memcpy(data, diskD - recSz, recSz);
         }
-//        free(pageContent);
         return 0;
+    }
+
+    RC RecordBasedFileManager::readRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                                          const RID &rid, void *data) {
+        //create a vector with string of attribute names
+        vector<string> attrNames;
+        attrNames.reserve(recordDescriptor.size());
+        for(const Attribute a: recordDescriptor){
+            attrNames.push_back(a.name);
+        }
+        RC rc = getRecordAttributes(fileHandle,rid,recordDescriptor,attrNames,data);
+        return rc;
     }
 
     RC RecordBasedFileManager::deleteRecord(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
@@ -347,8 +378,11 @@ namespace PeterDB {
         auto * pageData = static_cast<unsigned char *>(::calloc(1,PAGE_SIZE));
         if(pageData == nullptr)
             return -1;
-        if(fileHandle.readPage(pageNum, pageData) == -1)
-            return -1;
+        RC rc = fileHandle.readPage(pageNum, pageData);
+        if(rc == -1)
+            return -1; //general error
+        if(rc == -3)
+            return -3; //EOF
 
         //find the record length and offset from slot directory
         pageData += PAGE_SIZE - UNSIGNED_SZ;
@@ -493,8 +527,11 @@ namespace PeterDB {
         auto * pageData = static_cast<unsigned char *>(calloc(1,PAGE_SIZE));
         if(pageData == nullptr)
             return -1;
-        if(fileHandle.readPage(pageNum, pageData) == -1)
-            return -1;
+        RC rc = fileHandle.readPage(pageNum, pageData);
+        if(rc == -1)
+            return -1; //general
+        if(rc == -3)
+            return -3; //EOF
 
         //find the record length and offset from slot directory
         pageData += PAGE_SIZE - UNSIGNED_SZ;
@@ -610,9 +647,9 @@ namespace PeterDB {
                 //create a tombstone at current spot
                 unsigned newPageNum = findFreePage(newSize,fileHandle);
                 void * page = ::calloc(1,PAGE_SIZE);
-                if(newPageNum < fileHandle.numPages){
+                //if(newPageNum < fileHandle.numPages){
                     fileHandle.readPage(newPageNum, page);
-                }
+                //}
                 unsigned newSlotNum = writeRecord(page, newSize, newRecord);
                 if(newPageNum == fileHandle.numPages){
                     fileHandle.appendPage(page);
@@ -643,134 +680,143 @@ namespace PeterDB {
 
     RC RecordBasedFileManager::readAttribute(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
                                              const RID &rid, const std::string &attributeName, void *data) {
-        //find page and slot number and read the page in memory
-        unsigned pageNum = rid.pageNum;
-        const unsigned short slotNum = rid.slotNum;
-        void *temp = ::calloc(1, PAGE_SIZE);
-        auto *pageData = static_cast<unsigned char *>(temp);
-        if (pageData == nullptr)
-            return -1;
-        if (fileHandle.readPage(pageNum, pageData) == -1)
-            return -1;
+        //create a vector of string with name of req attribute
+        vector<string> attrName;
+        attrName.push_back(attributeName);
+        return getRecordAttributes(fileHandle,rid,recordDescriptor,attrName,data);
+    }
 
-        //find the record length and offset from slot directory
-        pageData += PAGE_SIZE;
-        pageData -= (2 * slotNum * UNSIGNED_SZ + (2 * UNSIGNED_SZ));
-        unsigned len;
-        unsigned offset;
-        ::memcpy(&len, pageData, UNSIGNED_SZ);
-        pageData += UNSIGNED_SZ;
-        ::memcpy(&offset, pageData, UNSIGNED_SZ);
-
-        //check if trying to read a deleted record
-        if (len == 0)
-            return -1;
-
-        pageData -= UNSIGNED_SZ;
-        pageData += (slotNum * 2 * UNSIGNED_SZ + (UNSIGNED_SZ * 2));
-        pageData -= PAGE_SIZE; //start of the page
-
-        pageData += offset; //start of record
-        pageData += TMBSTN_SZ + RID_SZ + UNSIGNED_SZ;
-        unsigned numFields = recordDescriptor.size();
-        unsigned nullInd = ceil((double) numFields / 8);
-        vector<bool> nullvec;
-        getNullBits(pageData, numFields, nullvec);
-        pageData += nullInd;
-
-        unsigned startRecData = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
-        unsigned recLen = 0;
-        unsigned offsetLen = numFields * UNSIGNED_SZ;
-
-        for(unsigned i = 0; i < numFields; i++){
-            if(!nullvec[i]){
-                //attribute is not null
-                Attribute a = recordDescriptor[i];
-                unsigned offsetField;
-                ::memcpy(&offsetField,pageData,UNSIGNED_SZ);
-                unsigned attrLen = offsetField - startRecData - recLen;
-                if(::strcmp(a.name.c_str(),attributeName.c_str()) == 0){
-                    //attr found
-                    void *tmp = ::calloc(1,attrLen + 1 + UNSIGNED_SZ);
-                    auto * dataC = static_cast<unsigned char*>(tmp);
-                    dataC++;
-                    if(a.type == 2){
-                        //varchar type so append length
-                        ::memcpy(dataC,&attrLen,UNSIGNED_SZ);
-                        dataC += UNSIGNED_SZ;
-                    }
-                    memcpy(dataC,pageData + offsetLen + recLen,attrLen);
-                    memcpy(data,dataC - 1,len + 1);
-                    free(tmp);
-                    break;
-                }
-                recLen += len;
-            }
-            pageData += UNSIGNED_SZ;
-            offsetLen -= UNSIGNED_SZ;
-        }
-        free(temp);
+    RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
+                                    const std::string &conditionAttribute, const CompOp compOp, const void *value,
+                                    const std::vector<std::string> &attributeNames,
+                                    RBFM_ScanIterator &rbfm_ScanIterator) {
+        RID rid;
+        rid.pageNum = 0;
+        rid.slotNum = 1;
+        rbfm_ScanIterator.currRid = rid;
+        rbfm_ScanIterator.fileHandle = fileHandle;
+        rbfm_ScanIterator.recordDescriptor = recordDescriptor;
+        rbfm_ScanIterator.compOp = compOp;
+        rbfm_ScanIterator.conditionAttr = conditionAttribute;
+        rbfm_ScanIterator.value = value;
+        rbfm_ScanIterator.attributeNames = attributeNames;
         return 0;
     }
 
-        RC RecordBasedFileManager::scan(FileHandle &fileHandle, const std::vector<Attribute> &recordDescriptor,
-                                        const std::string &conditionAttribute, const CompOp compOp, const void *value,
-                                        const std::vector<std::string> &attributeNames,
-                                        RBFM_ScanIterator &rbfm_ScanIterator) {
-            RID rid;
-            rid.pageNum = 0;
-            rid.slotNum = 1;
-            //fileHandle.readPage(rid.pageNum,rbfm_ScanIterator.currPage);
-            rbfm_ScanIterator.currRid = rid;
-            rbfm_ScanIterator.fileHandle = fileHandle;
-            rbfm_ScanIterator.recordDescriptor = recordDescriptor;
-            rbfm_ScanIterator.compOp = compOp;
-            rbfm_ScanIterator.conditionAttr = conditionAttribute;
-            rbfm_ScanIterator.value = &value;
-            rbfm_ScanIterator.attributeNames = attributeNames;
-            return -1;
+
+    bool compAttrVal(const void *condAttr, void *currAttr, const CompOp compOp, Attribute attr){
+        if(compOp == NO_OP)
+            return true;
+        unsigned null1;
+        ::memcpy(&null1,condAttr,1);
+        unsigned null2;
+        ::memcpy(&null2,currAttr,1);
+        if(null1 == 1 && null2 == 1){
+            //both fields are null
+            if(compOp == EQ_OP)
+                return true;
+            else
+                return false;
         }
+        if(null1 == 1 || null2 == 1){
+            //either one is null
+            if(compOp == NE_OP)
+                return true;
+            else
+                return false;
+        }
+        unsigned iVal1, iVal2;
+        float fVal1, fVal2;
+        string s1, s2;
+        auto *condAttrC = static_cast<unsigned const char*>(condAttr);
+        auto *currAttrC = static_cast<unsigned char*>(currAttr);
+        switch(attr.type){
+            case 0: memcpy(&iVal1,currAttrC + 1, UNSIGNED_SZ);
+                    memcpy(&iVal2,condAttrC + 1, UNSIGNED_SZ);
+                    break;
+            case 1: memcpy(&fVal1,currAttrC + 1, UNSIGNED_SZ);
+                    memcpy(&fVal2,condAttrC + 1, UNSIGNED_SZ);
+                    break;
+            case 2: unsigned len1, len2;
+                    ::memcpy(&len1,currAttrC + 1,UNSIGNED_SZ);
+                    ::memcpy(&len2,condAttrC + 1,UNSIGNED_SZ);
+                    string temp1(reinterpret_cast<char const*>(currAttrC + 1 + UNSIGNED_SZ), len1);
+                    string temp2(reinterpret_cast<char const*>(condAttrC + 1 + UNSIGNED_SZ), len2);
+                    s1 = temp1;
+                    s2 = temp2;
+                    break;
+        }
+        switch (compOp) {
+            case EQ_OP: if(attr.type == 0){
+                            return iVal1 == iVal2;
+                        }else if(attr.type == 1){
+                            return fVal1 == fVal2;
+                        }else{
+                            return s1 == s2;
+                        }
+            case LT_OP: if(attr.type == 0){
+                            return iVal1 < iVal2;
+                        }else if(attr.type == 1){
+                            return fVal1 < fVal2;
+                        }else{
+                            return s1 < s2;
+                        }
+            case LE_OP: if(attr.type == 0){
+                            return iVal1 <= iVal2;
+                        }else if(attr.type == 1){
+                            return fVal1 <= fVal2;
+                        }else{
+                            return s1 <= s2;
+                        }
+            case GT_OP: if(attr.type == 0){
+                            return iVal1 > iVal2;
+                        }else if(attr.type == 1){
+                            return fVal1 > fVal2;
+                        }else{
+                            return s1 > s2;
+                        }
+            case GE_OP: if(attr.type == 0){
+                            return iVal1 >= iVal2;
+                        }else if(attr.type == 1){
+                            return fVal1 >= fVal2;
+                        }else{
+                            return s1 >= s2;
+                        }
+            case NE_OP: if(attr.type == 0){
+                            return iVal1 != iVal2;
+                        }else if(attr.type == 1){
+                            return fVal1 != fVal2;
+                        }else{
+                            return s1 != s2;
+                        }
+        }
+        return false;
+    }
 
-        RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
-            RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
-            void *attrData = ::malloc(PAGE_SIZE);
-//            rbfm.readAttribute(this->fileHandle, this->recordDescriptor, this->currRid, this->conditionAttr, attrData);
-//            auto *temp = static_cast<unsigned char*>(attrData);
-//            unsigned pos = getAttrNum(this->conditionAttr,this->recordDescriptor);
-//            unsigned len = UNSIGNED_SZ;
-//            if(this->recordDescriptor[pos].type == 2){
-//                ::memcpy(&len,++temp, UNSIGNED_SZ);
-//                temp += UNSIGNED_SZ;
-//            }
+    RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
+        RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
+        void *attrData = ::malloc(PAGE_SIZE);
 
-            bool flag = true;
-            while(flag){
-                rbfm.readAttribute(this->fileHandle, this->recordDescriptor, this->currRid, this->conditionAttr, attrData);
-                auto *temp = static_cast<unsigned char*>(attrData);
-                unsigned pos = getAttrNum(this->conditionAttr,this->recordDescriptor);
-                unsigned len = UNSIGNED_SZ;
-                if(this->recordDescriptor[pos].type == 2){
-                    ::memcpy(&len,++temp, UNSIGNED_SZ);
-                    temp += UNSIGNED_SZ;
-                }
-                if (::memcmp(temp, this->value, len) == 0) {
+        while(this->currRid.pageNum < fileHandle.numPages){
+            auto *temp = static_cast<unsigned char*>(attrData);
+            unsigned len = UNSIGNED_SZ;
+            RC rc = rbfm.readAttribute(this->fileHandle, this->recordDescriptor, this->currRid, this->conditionAttr, attrData);
+            if(rc == 0) {
+                unsigned pos = getAttrNum(this->conditionAttr, this->recordDescriptor);
+                if (compAttrVal(this->value,attrData,this->compOp,recordDescriptor[pos])) {
                     rid = currRid;
-                    //get other attributes of this rid
-                    flag = false;
-                }else{
+                    getRecordAttributes(this->fileHandle, rid,this->recordDescriptor,this->attributeNames,data);
                     this->currRid.slotNum++;
-                    //check if all records scanned
-                    unsigned numRec = 0;
-                    if(this->currRid.slotNum > numRec){
-                        this->currRid.pageNum++;
-                    }
-                    if(this->currRid.pageNum == fileHandle.numPages)
-                        flag = false;
+                    return 0;
                 }
+                this->currRid.slotNum++;
+            }else if(rc == -2){
+                this->currRid.pageNum++; //reached end of records
+            }else{
+                return -1;
             }
-
-            return RBFM_EOF;
         }
-
-
+        return RBFM_EOF;
+    }
 }
+
