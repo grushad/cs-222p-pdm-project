@@ -419,14 +419,14 @@ namespace PeterDB {
         }else{
             return -1;
         }
-//        free(temp);
         rbfm.closeFile(tableFileHandle);
         rbfm.closeFile(colFileHandle);
-        //rbfm.closeFile(userTableFileHandle);
         return 0;
     }
 
     RC RelationManager::insertTuple(const std::string &tableName, const void *data, RID &rid) {
+        if(strcmp(tableName.c_str(),TABLES) == 0 || strcmp(tableName.c_str(),COLUMNS) == 0)
+            return -1;
         FileHandle fileHandle;
         if(rbfm.openFile(tableName,fileHandle) == -1)
             return -1;
@@ -439,6 +439,8 @@ namespace PeterDB {
     }
 
     RC RelationManager::deleteTuple(const std::string &tableName, const RID &rid) {
+        if(strcmp(tableName.c_str(),TABLES) == 0 || strcmp(tableName.c_str(),COLUMNS) == 0)
+            return -1;
         FileHandle fileHandle;
         if(rbfm.openFile(tableName,fileHandle) == -1)
             return -1;
@@ -451,6 +453,8 @@ namespace PeterDB {
     }
 
     RC RelationManager::updateTuple(const std::string &tableName, const void *data, const RID &rid) {
+        if(strcmp(tableName.c_str(),TABLES) == 0 || strcmp(tableName.c_str(),COLUMNS) == 0)
+            return -1;
         FileHandle fileHandle;
         if(rbfm.openFile(tableName,fileHandle) == -1)
             return -1;
@@ -516,11 +520,8 @@ namespace PeterDB {
     RM_ScanIterator::~RM_ScanIterator() = default;
 
     RC RM_ScanIterator::getNextTuple(RID &rid, void *data) {
-        RC rc = 0;
-        while(rc != RBFM_EOF){
-            rc = this->rbfmScanIterator.getNextRecord(rid,data);
-        }
-        return RM_EOF;
+        RC rc = this->rbfmScanIterator.getNextRecord(rid,data);
+        return rc == RBFM_EOF ? RM_EOF :rc;
     }
 
     RC RM_ScanIterator::close() {
