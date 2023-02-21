@@ -2,6 +2,7 @@
 #define _rm_h_
 
 #include <string>
+#include <cstring>
 #include <vector>
 
 #include "src/include/rbfm.h"
