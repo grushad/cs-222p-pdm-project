@@ -92,14 +92,11 @@ namespace PeterDB {
         //adding tombstone and rid at the start of the record for update queries
         recData += TMBSTN_SZ + RID_SZ;
 
-        ::memcpy(recData, &numFields, UNSIGNED_SZ);
-        recData += UNSIGNED_SZ;
-
         unsigned numNullBytes = ceil((double)numFields / 8);
         ::memcpy(recData, data, numNullBytes);
         recData += numNullBytes;
 
-        unsigned offset = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ + numNullBytes + (numFields * UNSIGNED_SZ); //tombstone size  + rid size + numFields || null indicator bits || offset for each field
+        unsigned offset = TMBSTN_SZ + RID_SZ + numNullBytes + (numFields * UNSIGNED_SZ); //tombstone size  + rid size || null indicator bits || offset for each field
         unsigned recSize = offset;
 
         auto * diskData = static_cast<const unsigned char *>(data);
@@ -172,8 +169,6 @@ namespace PeterDB {
         }else{
             pageC += (2 * UNSIGNED_SZ * slotNum);
         }
-
-
         unsigned offset = 0;
         if(numRecords != 0){
             unsigned maxRecOffset = 0;
@@ -303,7 +298,6 @@ namespace PeterDB {
             getRecordAttributes(fileHandle,rid0, recordDescriptor,attributeNames,data);
         }else{
             pageContent += TMBSTN_SZ + RID_SZ;
-            pageContent += UNSIGNED_SZ; //skip number of fields i.e. 4 bytes
 
             //create space in memory to store data in API format
             auto *diskD = static_cast<unsigned char *>(calloc(1, PAGE_SIZE));
@@ -324,7 +318,7 @@ namespace PeterDB {
             getAttrIds(recordDescriptor,attributeNames,attrIds);
 
             //for each field copy its data and length
-            unsigned startRecData = TMBSTN_SZ + RID_SZ + UNSIGNED_SZ + nullInd + (numFields * UNSIGNED_SZ);
+            unsigned startRecData = TMBSTN_SZ + RID_SZ + nullInd + (numFields * UNSIGNED_SZ);
             unsigned recLen = 0;
             unsigned offsetLen = numFields * UNSIGNED_SZ;
             for (int i = 0; i < numFields; i++) {
