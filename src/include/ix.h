@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <string>
+#include <cstring>
 
 #include "pfm.h"
 #include "rbfm.h" // for some type declarations only, e.g., RID and Attribute
@@ -57,6 +58,114 @@ namespace PeterDB {
 
     };
 
+    class IXPageManager{
+    public:
+        bool checkLeaf(void* data){
+            auto* dataC = static_cast<unsigned char*>(data);
+            unsigned res;
+            memcpy(&res,dataC + PAGE_SIZE - 1, 1);
+            return res == 1;
+        }
+        unsigned calcNumEntries(void* data){
+            auto* dataC = static_cast<unsigned char*>(data);
+            unsigned res;
+            memcpy(&res,dataC + PAGE_SIZE - 3, 2);
+            return res;
+        }
+        unsigned calcFreeBytes(void* data){
+            auto* dataC = static_cast<unsigned char*>(data);
+            unsigned res;
+            memcpy(&res,dataC + PAGE_SIZE - 5, 2);
+            return res;
+        }
+        PageNum calcRightSibling(void* data){
+            auto* dataC = static_cast<unsigned char*>(data);
+            PageNum rightSibling;
+            memcpy(&rightSibling,dataC + PAGE_SIZE - 9, UNSIGNED_SZ);
+            return rightSibling;
+        }
+        IXPageManager(void* data){
+            this->isLeaf = checkLeaf(data);
+            this->numEntries = calcNumEntries(data);
+            this->freeBytes = calcFreeBytes(data);
+            this->rightSibling = calcRightSibling(data);
+        }
+        bool getIsLeaf(){
+            return this->isLeaf;
+        }
+        unsigned getNumEntries(){
+            return this->numEntries;
+        }
+        unsigned getFreeBytes(){
+            return this->freeBytes;
+        }
+        PageNum getRightSibling(){
+            return this->rightSibling;
+        }
+
+        RC getKeys(const unsigned &key, std::vector<unsigned> &keyList){
+
+        }
+
+    protected:
+        bool isLeaf;
+        unsigned numEntries;
+        unsigned freeBytes;
+        PageNum rightSibling;
+    };
+
+    class IXRecordManager{
+    public:
+        IXRecordManager(const Attribute &indexAttr, void* data){
+            this->len = UNSIGNED_SZ;
+            auto* dataC = static_cast<unsigned char*>(data);
+            if(indexAttr.type == 2){
+                //varchar type
+                memcpy(&len,dataC,UNSIGNED_SZ);
+                dataC += UNSIGNED_SZ;
+            }
+            memcpy(this->key,dataC,len);
+        }
+    protected:
+        unsigned len;
+        void* key;
+    };
+
+    class IXLeafRecordManager:public IXRecordManager{
+    public:
+        IXLeafRecordManager(const Attribute &indexAttr, void* data)
+                :IXRecordManager(indexAttr,data){
+            auto* dataC = static_cast<unsigned char*>(data);
+            if(indexAttr.type == 2)
+                dataC += UNSIGNED_SZ;
+            memcpy(&this->numRIDs, dataC + this->len, UNSIGNED_SZ);
+            dataC += len + UNSIGNED_SZ;
+            for(int i = 0; i < this->numRIDs; i++){
+                RID rid;
+                memcpy(&rid.pageNum,dataC, UNSIGNED_SZ);
+                memcpy(&rid.slotNum,dataC + UNSIGNED_SZ, UNSIGNED_SZ / 2);
+                this->RIDList.push_back(rid);
+                dataC += UNSIGNED_SZ + (UNSIGNED_SZ / 2);
+            }
+        }
+    protected:
+        unsigned numRIDs;
+        std::vector<RID> RIDList;
+    };
+
+    class IXIndexRecordManager:public IXRecordManager{
+    public:
+        IXIndexRecordManager(const Attribute &indexAttr, void* data)
+            : IXRecordManager(indexAttr,data){
+            auto* dataC = static_cast<unsigned char*>(data);
+            if(indexAttr.type == 2)
+                dataC += UNSIGNED_SZ;
+            memcpy(&this->leftChild,dataC + this->len,UNSIGNED_SZ);
+        }
+    protected:
+        PageNum leftChild;
+    };
+
     class IX_ScanIterator {
     public:
 
@@ -80,6 +189,8 @@ namespace PeterDB {
         unsigned ixReadPageCounter;
         unsigned ixWritePageCounter;
         unsigned ixAppendPageCounter;
+        FileHandle fileHandle;
+        PageNum root;
 
         // Constructor
         IXFileHandle();

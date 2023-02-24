@@ -1,4 +1,4 @@
-#include "src/include/ix.h"
+ #include "src/include/ix.h"
 
 namespace PeterDB {
     IndexManager &IndexManager::instance() {
@@ -6,26 +6,55 @@ namespace PeterDB {
         return _index_manager;
     }
 
+    PagedFileManager &pfm = PagedFileManager::instance();
+
     RC IndexManager::createFile(const std::string &fileName) {
-        return -1;
+        return pfm.createFile(fileName);
     }
 
     RC IndexManager::destroyFile(const std::string &fileName) {
-        return -1;
+        return pfm.destroyFile(fileName);
     }
 
     RC IndexManager::openFile(const std::string &fileName, IXFileHandle &ixFileHandle) {
-        return -1;
+//        if(ixFileHandle.fileHandle.fileP != nullptr)
+//            return -1;
+        return pfm.openFile(fileName,ixFileHandle.fileHandle);
     }
 
     RC IndexManager::closeFile(IXFileHandle &ixFileHandle) {
-        return -1;
+        return pfm.closeFile(ixFileHandle.fileHandle);
+    }
+
+    RC insertHelper(PageNum node, IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid,PageNum &newEntry){
+        void* data = malloc(PAGE_SIZE);
+        ixFileHandle.fileHandle.readPage(node, data);
+        IXPageManager page(data);
+        if(page.getIsLeaf()){
+            switch(attribute.type){
+                case 0: unsigned intKeyVal;
+                    memcpy(&intKeyVal,key,UNSIGNED_SZ);
+                    break;
+                case 1: float floatKeyVal;
+                    memcpy(&floatKeyVal,key,UNSIGNED_SZ);
+                    break;
+                case 2: unsigned len;
+                memcpy(&len,key,UNSIGNED_SZ);
+                auto* keyC = static_cast<unsigned const char*>(key);
+                std::string sKeyVal( reinterpret_cast<char const*>(keyC + UNSIGNED_SZ), len);
+            }
+        }else{
+
+        }
     }
 
     RC
     IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
-        return -1;
+        PageNum p;
+        return insertHelper(ixFileHandle.root,ixFileHandle,attribute,key,rid, p);
     }
+
+
 
     RC
     IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
@@ -70,7 +99,7 @@ namespace PeterDB {
 
     RC
     IXFileHandle::collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount) {
-        return -1;
+        return this->fileHandle.collectCounterValues(readPageCount,writePageCount,appendPageCount);
     }
 
 } // namespace PeterDB
