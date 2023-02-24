@@ -222,9 +222,7 @@ namespace PeterDB {
         unsigned pageNumToWrite = findFreePage(recSize,fileHandle);
         void * pageData = ::calloc(1,PAGE_SIZE);
 
-        //if(pageNumToWrite < fileHandle.numPages){
         fileHandle.readPage(pageNumToWrite, pageData);
-        //}
         unsigned slotNum = writeRecord(pageData, recSize, recordData);
         if(pageNumToWrite == fileHandle.numPages){
             fileHandle.appendPage(pageData);
@@ -630,20 +628,16 @@ namespace PeterDB {
                     }
                 }
                 pageData += (numRec * 2 * UNSIGNED_SZ);
-                //update free bytes
-                unsigned newFreeBytes = freeBytes - (newSize - currLen);
+                unsigned newFreeBytes = freeBytes - (newSize - currLen); //update free bytes
                 ::memcpy(pageData + UNSIGNED_SZ,&newFreeBytes,UNSIGNED_SZ);
                 pageData += (2 * UNSIGNED_SZ);
                 pageData -= PAGE_SIZE; //at the start of the page
 
             }else{
-                //not enough free space to update new record on same page
-                //create a tombstone at current spot
+                //not enough free space to update new record on same page => create a tombstone at current spot
                 unsigned newPageNum = findFreePage(newSize,fileHandle);
                 void * page = ::calloc(1,PAGE_SIZE);
-                //if(newPageNum < fileHandle.numPages){
-                    fileHandle.readPage(newPageNum, page);
-                //}
+                fileHandle.readPage(newPageNum, page);
                 unsigned newSlotNum = writeRecord(page, newSize, newRecord);
                 if(newPageNum == fileHandle.numPages){
                     fileHandle.appendPage(page);

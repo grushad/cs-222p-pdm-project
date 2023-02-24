@@ -127,9 +127,10 @@ namespace PeterDB {
 
     RC FileHandle::appendPage(const void *data) {
         if(this->fileP != nullptr){
-            unsigned seekBytes = (++this->numPages) * PAGE_SIZE;
-            fseek(this->fileP, seekBytes, SEEK_SET);
+            this->numPages++;
+            fseek(this->fileP, 0, SEEK_END);
             fwrite(data, PAGE_SIZE,1, this->fileP);
+            fseek(this->fileP,0,SEEK_END);
             this->appendPageCounter += 1;
             return 0;
         }
