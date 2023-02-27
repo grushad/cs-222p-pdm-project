@@ -218,11 +218,61 @@ namespace PeterDB {
         }
     }
 
+    bool isGreaterKey(const Attribute &attribute, IXIndexRecordManager indexRec, const void* key){
+        switch(attribute.type){
+            case 0: unsigned iKey;
+                memcpy(&iKey,indexRec.getKey(),UNSIGNED_SZ);
+                unsigned ikeyToInsert;
+                memcpy(&ikeyToInsert,key,UNSIGNED_SZ);
+                if(iKey > ikeyToInsert)
+                    return true;
+                else
+                    return false;
+            case 1: unsigned fKey;
+                memcpy(&fKey,indexRec.getKey(),UNSIGNED_SZ);
+                unsigned fkeyToInsert;
+                memcpy(&fkeyToInsert,key,UNSIGNED_SZ);
+                if(fKey > fkeyToInsert)
+                    return true;
+                else
+                    return false;
+            case 2:
+                auto* sKey = static_cast<char *>(indexRec.getKey());
+                unsigned keyLen;
+                memcpy(&keyLen,sKey,UNSIGNED_SZ);
+                std::string sKeyVal(reinterpret_cast<char const *>(sKey + UNSIGNED_SZ), keyLen);
 
-    RC insertHelper(PageNum node, IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid,PageNum &newEntry){
+                auto* keyC = static_cast<const char *>(key);
+                unsigned newKeylen;
+                memcpy(&newKeylen,keyC,UNSIGNED_SZ);
+                std::string sKeyToInsert(reinterpret_cast<char const *>(keyC + UNSIGNED_SZ), newKeylen);
+                if(strcmp(sKeyVal.c_str(),sKeyToInsert.c_str()) > 0)
+                    return true;
+                else
+                    return false;
+        }
+    }
+
+    unsigned createIndexRec(void* data, const Attribute &attribute, void *key, PageNum &rightChild){
+        unsigned len = UNSIGNED_SZ;
+        unsigned size = len; //key for int, real; len for varchar
+        if(attribute.type == 2){
+            memcpy(&len, key, UNSIGNED_SZ);
+            size += len; //key for varchar
+        }
+        auto* dataC = static_cast<char *>(data);
+        memcpy(dataC,key,size);
+        size += UNSIGNED_SZ; //right child
+        memcpy(dataC + size, &rightChild,UNSIGNED_SZ);
+        return size;
+    }
+
+
+    RC insertHelper(PageNum node, IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid, void* newKey, PageNum &newPageEntry){
         void* data = malloc(PAGE_SIZE);
         ixFileHandle.fileHandle.readPage(node, data);
         IXPageManager page(data);
+        auto *dataC = static_cast<char*>(data);
 
         if(page.getIsLeaf()){
             //find insert offset
@@ -232,30 +282,73 @@ namespace PeterDB {
             unsigned size;
             void* dataToInsert = calloc(1,PAGE_SIZE);
             if(shiftLen == 0 || !keyExists(data,attribute,insertOff,key)){
-                //key doesnt exist
-//                void* recData = malloc(PAGE_SIZE / 2);
-                unsigned recSize = createLeafRec(dataToInsert,attribute,key,rid);
+                size = createLeafRec(dataToInsert,attribute,key,rid); //key doesn't exist
             }else{
-                //check if key existing
-                if(keyExists(data,attribute,insertOff,key)){
-                    //need space only for 1 RID i.e. 6 bytes
-                    size = UNSIGNED_SZ + (UNSIGNED_SZ / 2);
-
-                }
+                size = UNSIGNED_SZ + (UNSIGNED_SZ / 2);//need space only for 1 RID i.e. 6 bytes
             }
 
+            if(page.getFreeBytes() >= size){
+                //enough space on page -> shift bytes to the right
+                memmove(dataC + insertOff + size, dataC + insertOff, shiftLen);
+                memmove(dataC + insertOff,dataToInsert,size);
+                if(size == 6){
+                    //only RIDs updated; so update numRID in current record
+                     unsigned bytes = UNSIGNED_SZ;
+                     if(attribute.type == 2){
+                         unsigned len;
+                         memcpy(&len,dataC + insertOff,UNSIGNED_SZ);
+                         bytes += len;
+                     }
+                     unsigned currNumRids;
+                     memcpy(&currNumRids,dataC + insertOff + bytes, UNSIGNED_SZ);
+                     currNumRids++;
+                     memcpy(dataC + insertOff + bytes, &currNumRids, UNSIGNED_SZ);
+                }else{
+                    //update num records
+                    unsigned currNumRec;
+                    memcpy(&currNumRec,dataC + PAGE_SIZE - 3,UNSIGNED_SZ / 2);
+                    currNumRec++;
+                    memcpy(dataC + PAGE_SIZE - 3,&currNumRec,UNSIGNED_SZ / 2);
+                }
+                //update free bytes
+                unsigned currFreeBytes;
+                memcpy(&currFreeBytes,dataC + PAGE_SIZE - 5,UNSIGNED_SZ/2);
+                currFreeBytes -= size;
+                memcpy(dataC + PAGE_SIZE - 5,&currFreeBytes,UNSIGNED_SZ/2);
+            }else{
+                //split the page into 2 leaf pages
 
-            //if yes then append RID to list of RIDs; update num RIDs
-            //if not then create new index entry
-            //check for free space on page
-            //if yes then add to the page; update metadata
+            }
             //else split leaf; find mid; call append page and move 2nd half to new page
             //update sibling pointer in old page
             //set newchild entry as non null; pointer to new page?
         }else{
             //find subtree to navigate to; iterate linearly through keys on page
-            //call insertHelper recursively on the next page to visit
-            //if new child entry is not null then return => normal case; no split
+            unsigned numEntries = page.getNumEntries();
+            unsigned curr = 0;
+            IXIndexRecordManager indexRec(attribute,dataC + curr);
+            PageNum nextPage = page.getRightSibling(); //left child of the index node;
+            for (unsigned i = 0; i < numEntries; i++) {
+                if (isGreaterKey(attribute, indexRec, key)) {
+                    break;
+                }
+                curr += indexRec.getRecordLen();
+                nextPage = indexRec.getRightChild();
+                indexRec = IXIndexRecordManager(attribute, dataC + curr);
+            }
+            insertHelper(nextPage, ixFileHandle, attribute, key, rid, newKey, newPageEntry);
+            if(newPageEntry == -1)
+                return 0;
+            else{
+                void* data = malloc(PAGE_SIZE / 2);
+                unsigned newIndRecSize = createIndexRec(data,attribute,newKey,newPageEntry);
+                if(page.getFreeBytes() >= newIndRecSize){
+                    //write here!!//curr is my insert offset
+                }else{
+                    //split ;(((
+                }
+            }
+
             //else not null then insert key on curr page
             //if curr page has free space then insert and set new entry to null; return
             //else split 1/2 keys and move to new page

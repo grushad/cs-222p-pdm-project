@@ -80,7 +80,6 @@ namespace PeterDB {
             this->len = UNSIGNED_SZ;
             auto* dataC = static_cast<unsigned char*>(data);
             if(indexAttr.type == 2){
-                //varchar type
                 memcpy(&len,dataC,UNSIGNED_SZ);
                 dataC += UNSIGNED_SZ;
             }
@@ -139,11 +138,14 @@ namespace PeterDB {
                 this->recordLen += UNSIGNED_SZ;
             }
             this->recordLen += this->len;
-            memcpy(&this->leftChild,dataC + this->len,UNSIGNED_SZ);
+            memcpy(&this->rightChild,dataC + this->len,UNSIGNED_SZ);
             this->recordLen += UNSIGNED_SZ;
         }
+        PageNum getRightChild(){
+            return this->rightChild;
+        }
     protected:
-        PageNum leftChild;
+        PageNum rightChild;
     };
 
     class IXPageManager{
@@ -269,19 +271,12 @@ namespace PeterDB {
             keyList.push_back(sk);
         }
 
-//        bool isPageFull(const Attribute &indexAttr){
-//
-//        }
-
-
     protected:
         bool isLeaf;
         unsigned numEntries;
         unsigned freeBytes;
         PageNum rightSibling;
     };
-
-
 
     class IX_ScanIterator {
     public:
