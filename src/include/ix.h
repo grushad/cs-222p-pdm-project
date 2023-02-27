@@ -15,6 +15,21 @@ namespace PeterDB {
 
     class IXFileHandle;
 
+    typedef struct IntKey{
+        unsigned key;
+        unsigned offset;
+    }IntKey;
+
+    typedef struct FloatKey{
+        float key;
+        unsigned offset;
+    }FloatKey;
+
+    typedef struct SKey{
+        char* key;
+        unsigned offset;
+    }SKey;
+
     class IndexManager {
 
     public:
@@ -56,6 +71,79 @@ namespace PeterDB {
         IndexManager(const IndexManager &) = default;                               // Prevent construction by copying
         IndexManager &operator=(const IndexManager &) = default;                    // Prevent assignment
 
+    };
+
+
+    class IXRecordManager{
+    public:
+        IXRecordManager(const Attribute &indexAttr, void* data){
+            this->len = UNSIGNED_SZ;
+            auto* dataC = static_cast<unsigned char*>(data);
+            if(indexAttr.type == 2){
+                //varchar type
+                memcpy(&len,dataC,UNSIGNED_SZ);
+                dataC += UNSIGNED_SZ;
+            }
+            memcpy(this->key,dataC,len);
+        }
+        unsigned getRecordLen(){
+            return this->recordLen;
+        }
+        void* getKey(){
+            return this->key;
+        }
+        unsigned getKeyLen(){
+            return this->len;
+        }
+    protected:
+        unsigned len;
+        void* key;
+        unsigned recordLen;
+    };
+
+    class IXLeafRecordManager:public IXRecordManager{
+    public:
+        IXLeafRecordManager(const Attribute &indexAttr, void* data)
+                :IXRecordManager(indexAttr,data){
+            this->recordLen = 0;
+            auto* dataC = static_cast<unsigned char*>(data);
+            if(indexAttr.type == 2){
+                dataC += UNSIGNED_SZ; //len of varchar key
+                this->recordLen += UNSIGNED_SZ;
+            }
+            memcpy(&this->numRIDs, dataC + this->len, UNSIGNED_SZ);
+            dataC += this->len + UNSIGNED_SZ; //key + numRIDs
+            this->recordLen += len + UNSIGNED_SZ;
+            for(int i = 0; i < this->numRIDs; i++){
+                RID rid;
+                memcpy(&rid.pageNum,dataC, UNSIGNED_SZ);
+                memcpy(&rid.slotNum,dataC + UNSIGNED_SZ, UNSIGNED_SZ / 2);
+                this->RIDList.push_back(rid);
+                dataC += UNSIGNED_SZ + (UNSIGNED_SZ / 2);
+                this->recordLen += UNSIGNED_SZ + (UNSIGNED_SZ / 2);
+            }
+        }
+    protected:
+        unsigned numRIDs;
+        std::vector<RID> RIDList;
+    };
+
+    class IXIndexRecordManager:public IXRecordManager{
+    public:
+        IXIndexRecordManager(const Attribute &indexAttr, void* data)
+                : IXRecordManager(indexAttr,data){
+            this->recordLen = 0;
+            auto* dataC = static_cast<unsigned char*>(data);
+            if(indexAttr.type == 2){
+                dataC += UNSIGNED_SZ;
+                this->recordLen += UNSIGNED_SZ;
+            }
+            this->recordLen += this->len;
+            memcpy(&this->leftChild,dataC + this->len,UNSIGNED_SZ);
+            this->recordLen += UNSIGNED_SZ;
+        }
+    protected:
+        PageNum leftChild;
     };
 
     class IXPageManager{
@@ -103,9 +191,88 @@ namespace PeterDB {
             return this->rightSibling;
         }
 
-        RC getKeys(const unsigned &key, std::vector<unsigned> &keyList){
-
+        void getKeys(const Attribute &indexAttr, void* page, std::vector<IntKey> &keyList){
+            unsigned currOff = 0;
+            auto* pageC = static_cast<unsigned char*>(page);
+            for(unsigned i = 0; i < this->numEntries; i++){
+                if(this->isLeaf){
+                    IXLeafRecordManager leafRec(indexAttr,pageC + currOff);
+                    IntKey intKey;
+                    memcpy(&intKey.key,leafRec.getKey(),UNSIGNED_SZ);
+                    intKey.offset = currOff;
+                    keyList.push_back(intKey);
+                    currOff += leafRec.getRecordLen();
+                }else{
+                    IXIndexRecordManager indexRec(indexAttr,pageC + currOff);
+                    IntKey ik;
+                    memcpy(&ik.key,indexRec.getKey(),UNSIGNED_SZ);
+                    ik.offset = currOff;
+                    keyList.push_back(ik);
+                    currOff += indexRec.getRecordLen();
+                }
+            }
+            IntKey ik;
+            ik.key = 0;
+            ik.offset = currOff;
+            keyList.push_back(ik);
         }
+
+        void getKeys(const Attribute &indexAttr, void* page, std::vector<FloatKey> &keyList){
+            unsigned currOff = 0;
+            auto* pageC = static_cast<unsigned char*>(page);
+            for(unsigned i = 0; i < this->numEntries; i++){
+                if(this->isLeaf){
+                    IXLeafRecordManager leafRec(indexAttr,pageC + currOff);
+                    FloatKey floatKey;
+                    memcpy(&floatKey.key,leafRec.getKey(),UNSIGNED_SZ);
+                    floatKey.offset = currOff;
+                    keyList.push_back(floatKey);
+                    currOff += leafRec.getRecordLen();
+                }else{
+                    IXIndexRecordManager indexRec(indexAttr,pageC + currOff);
+                    FloatKey floatKey;
+                    memcpy(&floatKey.key,indexRec.getKey(),UNSIGNED_SZ);
+                    floatKey.offset = currOff;
+                    keyList.push_back(floatKey);
+                    currOff += indexRec.getRecordLen();
+                }
+            }
+            FloatKey fk;
+            fk.key = 0.0f;
+            fk.offset = currOff;
+            keyList.push_back(fk);
+        }
+
+        void getKeys(const Attribute &indexAttr, void* page, std::vector<SKey> &keyList){
+            unsigned currOff = 0;
+            auto* pageC = static_cast<unsigned char*>(page);
+            for(unsigned i = 0; i < this->numEntries; i++){
+                if(this->isLeaf){
+                    IXLeafRecordManager leafRec(indexAttr,pageC + currOff);
+                    SKey sKey;
+                    memcpy(&sKey.key,leafRec.getKey(),leafRec.getKeyLen());
+                    sKey.offset = currOff;
+                    keyList.push_back(sKey);
+                    currOff += leafRec.getRecordLen();
+                }else{
+                    IXIndexRecordManager indexRec(indexAttr,pageC + currOff);
+                    SKey sKey;
+                    memcpy(&sKey.key,indexRec.getKey(),indexRec.getKeyLen());
+                    sKey.offset = currOff;
+                    keyList.push_back(sKey);
+                    currOff += indexRec.getRecordLen();
+                }
+            }
+            SKey sk;
+            sk.key = 0;
+            sk.offset = currOff;
+            keyList.push_back(sk);
+        }
+
+//        bool isPageFull(const Attribute &indexAttr){
+//
+//        }
+
 
     protected:
         bool isLeaf;
@@ -114,57 +281,7 @@ namespace PeterDB {
         PageNum rightSibling;
     };
 
-    class IXRecordManager{
-    public:
-        IXRecordManager(const Attribute &indexAttr, void* data){
-            this->len = UNSIGNED_SZ;
-            auto* dataC = static_cast<unsigned char*>(data);
-            if(indexAttr.type == 2){
-                //varchar type
-                memcpy(&len,dataC,UNSIGNED_SZ);
-                dataC += UNSIGNED_SZ;
-            }
-            memcpy(this->key,dataC,len);
-        }
-    protected:
-        unsigned len;
-        void* key;
-    };
 
-    class IXLeafRecordManager:public IXRecordManager{
-    public:
-        IXLeafRecordManager(const Attribute &indexAttr, void* data)
-                :IXRecordManager(indexAttr,data){
-            auto* dataC = static_cast<unsigned char*>(data);
-            if(indexAttr.type == 2)
-                dataC += UNSIGNED_SZ;
-            memcpy(&this->numRIDs, dataC + this->len, UNSIGNED_SZ);
-            dataC += len + UNSIGNED_SZ;
-            for(int i = 0; i < this->numRIDs; i++){
-                RID rid;
-                memcpy(&rid.pageNum,dataC, UNSIGNED_SZ);
-                memcpy(&rid.slotNum,dataC + UNSIGNED_SZ, UNSIGNED_SZ / 2);
-                this->RIDList.push_back(rid);
-                dataC += UNSIGNED_SZ + (UNSIGNED_SZ / 2);
-            }
-        }
-    protected:
-        unsigned numRIDs;
-        std::vector<RID> RIDList;
-    };
-
-    class IXIndexRecordManager:public IXRecordManager{
-    public:
-        IXIndexRecordManager(const Attribute &indexAttr, void* data)
-            : IXRecordManager(indexAttr,data){
-            auto* dataC = static_cast<unsigned char*>(data);
-            if(indexAttr.type == 2)
-                dataC += UNSIGNED_SZ;
-            memcpy(&this->leftChild,dataC + this->len,UNSIGNED_SZ);
-        }
-    protected:
-        PageNum leftChild;
-    };
 
     class IX_ScanIterator {
     public:
