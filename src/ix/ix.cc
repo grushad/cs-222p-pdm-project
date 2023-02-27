@@ -275,8 +275,7 @@ namespace PeterDB {
         auto *dataC = static_cast<char*>(data);
 
         if(page.getIsLeaf()){
-            //find insert offset
-            unsigned* temp = getInsertLoc(page,data,attribute,key);
+            unsigned* temp = getInsertLoc(page,data,attribute,key);  //find insert offset
             unsigned insertOff = temp[0];
             unsigned shiftLen = temp[1];
             unsigned size;
@@ -292,8 +291,7 @@ namespace PeterDB {
                 memmove(dataC + insertOff + size, dataC + insertOff, shiftLen);
                 memmove(dataC + insertOff,dataToInsert,size);
                 if(size == 6){
-                    //only RIDs updated; so update numRID in current record
-                     unsigned bytes = UNSIGNED_SZ;
+                     unsigned bytes = UNSIGNED_SZ; //only RIDs updated; so update numRID in current record
                      if(attribute.type == 2){
                          unsigned len;
                          memcpy(&len,dataC + insertOff,UNSIGNED_SZ);
@@ -309,11 +307,12 @@ namespace PeterDB {
                 page.updateFreeBytes(data, size * -1);
             }else{
                 //split the page into 2 leaf pages
+                //else split leaf; find mid; call append page and move 2nd half to new page
+                //update sibling pointer in old page
+                //set newchild entry as non null; pointer to new page?
 
             }
-            //else split leaf; find mid; call append page and move 2nd half to new page
-            //update sibling pointer in old page
-            //set newchild entry as non null; pointer to new page?
+
         }else{
             //find subtree to navigate to; iterate linearly through keys on page
             unsigned numEntries = page.getNumEntries();
@@ -329,7 +328,7 @@ namespace PeterDB {
                 indexRec = IXIndexRecordManager(attribute, dataC + curr);
             }
             insertHelper(nextPage, ixFileHandle, attribute, key, rid, newKey, newPageEntry);
-            if(newPageEntry == -1)
+            if(newPageEntry == 0)
                 return 0;
             else{
                 void* indexData = malloc(PAGE_SIZE / 2);
@@ -340,14 +339,14 @@ namespace PeterDB {
                     memmove(dataC + curr,indexData,newIndRecSize);
                     page.updateNumEntries(data, 1);
                     page.updateFreeBytes(data, newIndRecSize * -1);
+                    newPageEntry = 0;
+                    newKey = nullptr;
+                    return 0;
                 }else{
                     //split ;(((
+                    //else split 1/2 keys and move to new page
                 }
             }
-
-            //else not null then insert key on curr page
-            //if curr page has free space then insert and set new entry to null; return
-            //else split 1/2 keys and move to new page
         }
     }
 
