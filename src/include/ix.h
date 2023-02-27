@@ -193,6 +193,25 @@ namespace PeterDB {
             return this->rightSibling;
         }
 
+        unsigned getMetadataLen(){
+            return 1 + (UNSIGNED_SZ * 2);
+        }
+        unsigned getTotalIndexEntriesLen(){
+            return PAGE_SIZE - this->getMetadataLen();
+        }
+
+        void updateNumEntries(void* data, int entriesChange){
+            this->numEntries += entriesChange;
+            auto* dataC = static_cast<char*>(data);
+            memcpy(dataC + PAGE_SIZE - 3, &this->numEntries, 2);
+        }
+
+        void updateFreeBytes(void* data, int freeBytesChange){
+            this->freeBytes += freeBytesChange;
+            auto* dataC = static_cast<char*>(data);
+            memcpy(dataC + PAGE_SIZE - 5, &this->freeBytes, 2);
+        }
+
         void getKeys(const Attribute &indexAttr, void* page, std::vector<IntKey> &keyList){
             unsigned currOff = 0;
             auto* pageC = static_cast<unsigned char*>(page);

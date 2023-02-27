@@ -304,17 +304,9 @@ namespace PeterDB {
                      currNumRids++;
                      memcpy(dataC + insertOff + bytes, &currNumRids, UNSIGNED_SZ);
                 }else{
-                    //update num records
-                    unsigned currNumRec;
-                    memcpy(&currNumRec,dataC + PAGE_SIZE - 3,UNSIGNED_SZ / 2);
-                    currNumRec++;
-                    memcpy(dataC + PAGE_SIZE - 3,&currNumRec,UNSIGNED_SZ / 2);
+                    page.updateNumEntries(data, 1);
                 }
-                //update free bytes
-                unsigned currFreeBytes;
-                memcpy(&currFreeBytes,dataC + PAGE_SIZE - 5,UNSIGNED_SZ/2);
-                currFreeBytes -= size;
-                memcpy(dataC + PAGE_SIZE - 5,&currFreeBytes,UNSIGNED_SZ/2);
+                page.updateFreeBytes(data, size * -1);
             }else{
                 //split the page into 2 leaf pages
 
@@ -340,10 +332,14 @@ namespace PeterDB {
             if(newPageEntry == -1)
                 return 0;
             else{
-                void* data = malloc(PAGE_SIZE / 2);
-                unsigned newIndRecSize = createIndexRec(data,attribute,newKey,newPageEntry);
+                void* indexData = malloc(PAGE_SIZE / 2);
+                unsigned newIndRecSize = createIndexRec(indexData,attribute,newKey,newPageEntry);
                 if(page.getFreeBytes() >= newIndRecSize){
-                    //write here!!//curr is my insert offset
+                    unsigned shiftLen = page.getTotalIndexEntriesLen() - curr;
+                    memmove(dataC + curr + newIndRecSize, dataC + curr, shiftLen);
+                    memmove(dataC + curr,indexData,newIndRecSize);
+                    page.updateNumEntries(data, 1);
+                    page.updateFreeBytes(data, newIndRecSize * -1);
                 }else{
                     //split ;(((
                 }
