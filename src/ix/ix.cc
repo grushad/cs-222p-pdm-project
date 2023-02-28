@@ -267,6 +267,34 @@ namespace PeterDB {
         return size;
     }
 
+    void splitPage(IXPageManager page, void* oldPageData, const Attribute &indexAttr, void* recordData, void* key, void* newPageData){
+        auto* oldPageC = static_cast<char *>(oldPageData);
+        auto* newPageC = static_cast<char *>(newPageData);
+        switch(indexAttr.type) {
+            case 0: {
+                vector<IntKey> vec;
+                page.getKeys(indexAttr, oldPageData, vec);
+                unsigned keyVal;
+                memcpy(&keyVal, key, UNSIGNED_SZ);
+                unsigned ind = intBinSrch(keyVal, vec);
+                unsigned mid = (page.getNumEntries() + 1) / 2; // + 1 for new entry to find mid
+                if(ind < mid){
+                    //old page
+                    //move the 2nd half of data to new page
+                    unsigned bytesToShift = vec[vec.size() - 1].offset - vec[mid].offset;
+                    memcpy(newPageC,oldPageC + vec[mid].offset, bytesToShift);
+                    page.updateFreeBytes(oldPageData, bytesToShift);
+                    unsigned entriesMoved = page.getNumEntries() - mid + 1;
+                    page.updateNumEntries(oldPageData, entriesMoved * -1);
+                } else{
+                    //right page
+                }
+                break;
+            }
+            case 1: break;
+            case 2: break;
+        }
+    }
 
     RC insertHelper(PageNum node, IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid, void* newKey, PageNum &newPageEntry){
         void* data = malloc(PAGE_SIZE);
