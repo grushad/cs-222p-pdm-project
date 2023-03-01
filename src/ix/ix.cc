@@ -277,24 +277,28 @@ namespace PeterDB {
                 memcpy(&keyVal, key, UNSIGNED_SZ);
                 unsigned ind = intBinSrch(keyVal, vec);
                 unsigned mid = (oldPage.getNumEntries() + 1) / 2; // + 1 for new entry to find mid
+
+                //move the 2nd half of data to new page
+                unsigned bytesToShift = vec[vec.size() - 1].offset - vec[mid].offset;
+                memcpy(newPageC,oldPageC + vec[mid].offset, bytesToShift);
+                unsigned entriesMoved = oldPage.getNumEntries() - mid + 1;
+                oldPage.updateFreeBytes(bytesToShift);
+                oldPage.updateNumEntries(entriesMoved * -1);
+
+                newPage.updateNumEntries(entriesMoved);
+                newPage.updateFreeBytes(bytesToShift * -1);
+
                 if(ind < mid){
-                    //old page
-                    //move the 2nd half of data to new page
-                    unsigned bytesToShift = vec[vec.size() - 1].offset - vec[mid].offset;
-                    memcpy(newPageC,oldPageC + vec[mid].offset, bytesToShift);
-                    unsigned entriesMoved = oldPage.getNumEntries() - mid + 1;
-                    oldPage.updateFreeBytes(bytesToShift);
-                    oldPage.updateNumEntries(entriesMoved * -1);
-
-                    newPage.updateNumEntries(entriesMoved);
-                    newPage.updateFreeBytes(bytesToShift * -1);
-
                     //add new key to the old page
                     unsigned shiftBytesNewRec = vec[mid].offset - vec[ind].offset; //bytes to shift for new record
                     memmove(oldPageC + vec[ind].offset + newRecSize, oldPageC + vec[ind].offset, shiftBytesNewRec);
                     memmove(oldPageC + vec[ind].offset,recordData,newRecSize);
                 } else{
                     //right page
+                    unsigned offsetChange = vec[mid].offset; //offset will change by offset of mid record; it will reduce by this value
+                    unsigned shiftBytes = (vec[vec.size() - 1].offset - offsetChange) - (vec[ind].offset - offsetChange);
+                    memmove(newPageC + vec[ind].offset - offsetChange + newRecSize, oldPageC + vec[ind].offset - offsetChange, shiftBytes);
+                    memmove(newPageC + vec[ind].offset - offsetChange,recordData,newRecSize);
                 }
                 break;
             }
