@@ -19,7 +19,7 @@ namespace PeterDB {
         memcpy(pageC + PAGE_SIZE - 1, &isLeafVal, 1);
         memcpy(pageC + PAGE_SIZE - (1 + (UNSIGNED_SZ) / 2), &freeBytes, UNSIGNED_SZ / 2);
         memcpy(pageC + PAGE_SIZE - (1 + (UNSIGNED_SZ * 2)), &rightChild, UNSIGNED_SZ);
-        free(pageC);
+//        free(pageC);
     }
 
     RC IndexManager::createFile(const std::string &fileName) {
@@ -31,6 +31,7 @@ namespace PeterDB {
     }
 
     RC initIndexFile(IXFileHandle &ixFileHandle){
+        ixFileHandle.init = true;
         if(ixFileHandle.fileHandle.numPages == 0){
             //need to initialize index file
             void* dummy = calloc(1,PAGE_SIZE); //dummy pointer page
