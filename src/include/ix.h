@@ -331,6 +331,7 @@ namespace PeterDB {
         unsigned ixAppendPageCounter;
         FileHandle fileHandle;
         PageNum root;
+        bool init = false;
 
         // Constructor
         IXFileHandle();
