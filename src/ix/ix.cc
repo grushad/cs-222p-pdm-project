@@ -9,9 +9,9 @@ namespace PeterDB {
     PagedFileManager &pfm = PagedFileManager::instance();
 
     void initPage(void * page, bool isLeaf){
-        unsigned freeBytes = PAGE_SIZE - (1 + (UNSIGNED_SZ * 2)); // leaf | free | entries | right child
+        unsigned short freeBytes = PAGE_SIZE - (1 + (UNSIGNED_SZ * 2)); // leaf | free | entries | right child
         unsigned rightChild = 0;
-        unsigned short isLeafVal = 0;
+        char isLeafVal = 0;
         if(isLeaf){
             isLeafVal = 1;
         }

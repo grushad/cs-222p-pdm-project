@@ -161,19 +161,19 @@ namespace PeterDB {
 
         bool checkLeaf(){
             auto* dataC = static_cast<unsigned char*>(this->pageData);
-            unsigned res;
+            char res;
             memcpy(&res,dataC + PAGE_SIZE - 1, 1);
             return res == 1;
         }
         unsigned calcNumEntries(){
             auto* dataC = static_cast<unsigned char*>(this->pageData);
-            unsigned res;
+            unsigned short res;
             memcpy(&res,dataC + PAGE_SIZE - 3, 2);
             return res;
         }
         unsigned calcFreeBytes(){
             auto* dataC = static_cast<unsigned char*>(this->pageData);
-            unsigned res;
+            unsigned short res;
             memcpy(&res,dataC + PAGE_SIZE - 5, 2);
             return res;
         }
