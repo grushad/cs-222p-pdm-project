@@ -10,16 +10,15 @@ namespace PeterDB {
 
     void initPage(void * page, bool isLeaf){
         unsigned freeBytes = PAGE_SIZE - (1 + (UNSIGNED_SZ * 2)); // leaf | free | entries | right child
-        signed rightChild = -1;
+        unsigned rightChild = 0;
         unsigned short isLeafVal = 0;
         if(isLeaf){
             isLeafVal = 1;
         }
         auto* pageC = static_cast<unsigned char*>(page);
         memcpy(pageC + PAGE_SIZE - 1, &isLeafVal, 1);
-        memcpy(pageC + PAGE_SIZE - (1 + (UNSIGNED_SZ) / 2), &freeBytes, UNSIGNED_SZ / 2);
+        memcpy(pageC + PAGE_SIZE - (1 + UNSIGNED_SZ), &freeBytes, UNSIGNED_SZ / 2);
         memcpy(pageC + PAGE_SIZE - (1 + (UNSIGNED_SZ * 2)), &rightChild, UNSIGNED_SZ);
-//        free(pageC);
     }
 
     RC IndexManager::createFile(const std::string &fileName) {
@@ -40,10 +39,10 @@ namespace PeterDB {
             RC rc1 = ixFileHandle.fileHandle.appendPage(dummy);
             free(dummy);
 
-            void* rootPage = calloc(1,PAGE_SIZE);
+            auto* rootPage = static_cast<char*>(calloc(1,PAGE_SIZE));
             initPage(rootPage, false);
             unsigned leftChildPage = rootPageNum + 1;
-            memcpy(rootPage,&leftChildPage,UNSIGNED_SZ); //initialize left child of root
+            memcpy(rootPage + PAGE_SIZE - 9,&leftChildPage,UNSIGNED_SZ); //initialize left child of root
             RC rc2 = ixFileHandle.fileHandle.appendPage(rootPage);
             free(rootPage);
 
@@ -51,15 +50,19 @@ namespace PeterDB {
             initPage(leafPage,true);
             RC rc3 = ixFileHandle.fileHandle.appendPage(leafPage);
             free(leafPage);
+
+            if(rc1 == -1 || rc2 == -1 || rc3 == -1)
+                return -1;
         }
         return 0;
     }
 
     RC IndexManager::openFile(const std::string &fileName, IXFileHandle &ixFileHandle) {
-//        if(ixFileHandle.fileHandle.fileP != nullptr)
-//            return -1;
+        if(ixFileHandle.fileHandle.fileP != nullptr)
+            return -1;
         RC rc = pfm.openFile(fileName,ixFileHandle.fileHandle);
         initIndexFile(ixFileHandle);
+        ixFileHandle.root = 1;
         return rc;
     }
 
