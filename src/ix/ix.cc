@@ -266,7 +266,7 @@ namespace PeterDB {
         return size;
     }
 
-    void splitPage(IXPageManager oldPage, IXPageManager newPage, const Attribute &indexAttr, void* recordData, void* key){
+    void splitPage(IXPageManager oldPage, IXPageManager newPage, const Attribute &indexAttr, void* recordData, void* key, unsigned newRecSize){
         auto* oldPageC = static_cast<char *>(oldPage.getPageData());
         auto* newPageC = static_cast<char *>(newPage.getPageData());
         switch(indexAttr.type) {
@@ -282,9 +282,17 @@ namespace PeterDB {
                     //move the 2nd half of data to new page
                     unsigned bytesToShift = vec[vec.size() - 1].offset - vec[mid].offset;
                     memcpy(newPageC,oldPageC + vec[mid].offset, bytesToShift);
-                    oldPage.updateFreeBytes(bytesToShift);
                     unsigned entriesMoved = oldPage.getNumEntries() - mid + 1;
+                    oldPage.updateFreeBytes(bytesToShift);
                     oldPage.updateNumEntries(entriesMoved * -1);
+
+                    newPage.updateNumEntries(entriesMoved);
+                    newPage.updateFreeBytes(bytesToShift * -1);
+
+                    //add new key to the old page
+                    unsigned shiftBytesNewRec = vec[mid].offset - vec[ind].offset; //bytes to shift for new record
+                    memmove(oldPageC + vec[ind].offset + newRecSize, oldPageC + vec[ind].offset, shiftBytesNewRec);
+                    memmove(oldPageC + vec[ind].offset,recordData,newRecSize);
                 } else{
                     //right page
                 }
