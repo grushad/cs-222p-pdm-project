@@ -266,7 +266,7 @@ namespace PeterDB {
         return size;
     }
 
-    void splitPage(IXPageManager oldPage, IXPageManager newPage, const Attribute &indexAttr, void* recordData, void* key, unsigned newRecSize){
+    void splitPage(IXPageManager oldPage, IXPageManager newPage, const Attribute &indexAttr, void* recordData, const void* key, unsigned newRecSize, void* splitKey){
         auto* oldPageC = static_cast<char *>(oldPage.getPageData());
         auto* newPageC = static_cast<char *>(newPage.getPageData());
         switch(indexAttr.type) {
@@ -300,6 +300,8 @@ namespace PeterDB {
                     memmove(newPageC + vec[ind].offset - offsetChange + newRecSize, oldPageC + vec[ind].offset - offsetChange, shiftBytes);
                     memmove(newPageC + vec[ind].offset - offsetChange,recordData,newRecSize);
                 }
+                splitKey = calloc(1,UNSIGNED_SZ);
+                memcpy(splitKey, &vec[ind].key, UNSIGNED_SZ);
                 break;
             }
             case 1: break;
@@ -344,12 +346,15 @@ namespace PeterDB {
                     page.updateNumEntries(1);
                 }
                 page.updateFreeBytes(size * -1);
+                newPageEntry = 0;
+                newKey = nullptr;
             }else{
-                //split the page into 2 leaf pages
-                //else split leaf; find mid; call append page and move 2nd half to new page
-                //update sibling pointer in old page
-                //set newchild entry as non null; pointer to new page?
-
+                void* newPageData = calloc(1,PAGE_SIZE);
+                initPage(newPageData,true);
+                IXPageManager newPage(newPageData);
+                splitPage(page,newPage,attribute,dataToInsert,key,size, newKey);
+                ixFileHandle.fileHandle.appendPage(newPageData);
+                newPageEntry = ixFileHandle.fileHandle.getNumberOfPages() - 1;
             }
 
         }else{
@@ -382,8 +387,13 @@ namespace PeterDB {
                     newKey = nullptr;
                     return 0;
                 }else{
-                    //split ;(((
-                    //else split 1/2 keys and move to new page
+                    //split ;((( else split 1/2 keys and move to new page
+                    void* newPageData = calloc(1, PAGE_SIZE);
+                    initPage(newPageData,false);
+                    IXPageManager newPage(newPageData);
+                    splitPage(page,newPage,attribute,indexData,key,newIndRecSize,newKey);
+                    ixFileHandle.fileHandle.appendPage(newPageData);
+                    newPageEntry = ixFileHandle.fileHandle.getNumberOfPages() - 1;
                 }
             }
         }
@@ -391,8 +401,9 @@ namespace PeterDB {
 
     RC
     IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
-//        PageNum p;
-//        return insertHelper(ixFileHandle.root,ixFileHandle,attribute,key,rid, p);
+        void* newKey = nullptr;
+        PageNum pgnum = 0;
+        insertHelper(ixFileHandle.root,ixFileHandle,attribute,key,rid, newKey, pgnum);
         return 0;
     }
 
