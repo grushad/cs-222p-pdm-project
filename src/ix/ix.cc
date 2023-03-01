@@ -15,11 +15,10 @@ namespace PeterDB {
         if(isLeaf){
             isLeafVal = 1;
         }
-        auto* pageC = static_cast<unsigned char*>(calloc(1,PAGE_SIZE));
+        auto* pageC = static_cast<unsigned char*>(page);
         memcpy(pageC + PAGE_SIZE - 1, &isLeafVal, 1);
         memcpy(pageC + PAGE_SIZE - (1 + (UNSIGNED_SZ) / 2), &freeBytes, UNSIGNED_SZ / 2);
         memcpy(pageC + PAGE_SIZE - (1 + (UNSIGNED_SZ * 2)), &rightChild, UNSIGNED_SZ);
-        memcpy(page,pageC,PAGE_SIZE);
         free(pageC);
     }
 
@@ -123,7 +122,7 @@ namespace PeterDB {
                 memcpy(&intKeyVal,key,UNSIGNED_SZ);
                 vector<IntKey> vec;
                 vec.reserve(page.getNumEntries());
-                page.getKeys(attribute,pageData,vec);
+                page.getKeys(attribute,vec);
                 insertOff = vec[intBinSrch(intKeyVal,vec)].offset;
                 shiftLen = vec[vec.size() - 1].offset - insertOff;
                 break;
@@ -134,7 +133,7 @@ namespace PeterDB {
                 memcpy(&floatKeyVal, key, UNSIGNED_SZ);
                 vector<FloatKey> vec;
                 vec.reserve(page.getNumEntries());
-                page.getKeys(attribute,pageData,vec);
+                page.getKeys(attribute,vec);
                 insertOff = vec[floatBinSrch(floatKeyVal,vec)].offset;
                 shiftLen = vec[vec.size() - 1].offset - insertOff;
                 break;
@@ -147,7 +146,7 @@ namespace PeterDB {
                 std::string sKeyVal(reinterpret_cast<char const *>(keyC + UNSIGNED_SZ), len);
                 vector<SKey> vec;
                 vec.reserve(page.getNumEntries());
-                page.getKeys(attribute,pageData,vec);
+                page.getKeys(attribute,vec);
                 insertOff = vec[strBinSrch(keyC,vec)].offset;
                 shiftLen = vec[vec.size() - 1].offset - insertOff;
                 break;
@@ -267,25 +266,25 @@ namespace PeterDB {
         return size;
     }
 
-    void splitPage(IXPageManager page, void* oldPageData, const Attribute &indexAttr, void* recordData, void* key, void* newPageData){
-        auto* oldPageC = static_cast<char *>(oldPageData);
-        auto* newPageC = static_cast<char *>(newPageData);
+    void splitPage(IXPageManager oldPage, IXPageManager newPage, const Attribute &indexAttr, void* recordData, void* key){
+        auto* oldPageC = static_cast<char *>(oldPage.getPageData());
+        auto* newPageC = static_cast<char *>(newPage.getPageData());
         switch(indexAttr.type) {
             case 0: {
                 vector<IntKey> vec;
-                page.getKeys(indexAttr, oldPageData, vec);
+                oldPage.getKeys(indexAttr, vec);
                 unsigned keyVal;
                 memcpy(&keyVal, key, UNSIGNED_SZ);
                 unsigned ind = intBinSrch(keyVal, vec);
-                unsigned mid = (page.getNumEntries() + 1) / 2; // + 1 for new entry to find mid
+                unsigned mid = (oldPage.getNumEntries() + 1) / 2; // + 1 for new entry to find mid
                 if(ind < mid){
                     //old page
                     //move the 2nd half of data to new page
                     unsigned bytesToShift = vec[vec.size() - 1].offset - vec[mid].offset;
                     memcpy(newPageC,oldPageC + vec[mid].offset, bytesToShift);
-                    page.updateFreeBytes(oldPageData, bytesToShift);
-                    unsigned entriesMoved = page.getNumEntries() - mid + 1;
-                    page.updateNumEntries(oldPageData, entriesMoved * -1);
+                    oldPage.updateFreeBytes(bytesToShift);
+                    unsigned entriesMoved = oldPage.getNumEntries() - mid + 1;
+                    oldPage.updateNumEntries(entriesMoved * -1);
                 } else{
                     //right page
                 }
@@ -330,9 +329,9 @@ namespace PeterDB {
                      currNumRids++;
                      memcpy(dataC + insertOff + bytes, &currNumRids, UNSIGNED_SZ);
                 }else{
-                    page.updateNumEntries(data, 1);
+                    page.updateNumEntries(1);
                 }
-                page.updateFreeBytes(data, size * -1);
+                page.updateFreeBytes(size * -1);
             }else{
                 //split the page into 2 leaf pages
                 //else split leaf; find mid; call append page and move 2nd half to new page
@@ -365,8 +364,8 @@ namespace PeterDB {
                     unsigned shiftLen = page.getTotalIndexEntriesLen() - curr;
                     memmove(dataC + curr + newIndRecSize, dataC + curr, shiftLen);
                     memmove(dataC + curr,indexData,newIndRecSize);
-                    page.updateNumEntries(data, 1);
-                    page.updateFreeBytes(data, newIndRecSize * -1);
+                    page.updateNumEntries(1);
+                    page.updateFreeBytes(newIndRecSize * -1);
                     newPageEntry = 0;
                     newKey = nullptr;
                     return 0;
@@ -384,8 +383,6 @@ namespace PeterDB {
 //        return insertHelper(ixFileHandle.root,ixFileHandle,attribute,key,rid, p);
         return 0;
     }
-
-
 
     RC
     IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {

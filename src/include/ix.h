@@ -150,36 +150,40 @@ namespace PeterDB {
 
     class IXPageManager{
     public:
-        bool checkLeaf(void* data){
-            auto* dataC = static_cast<unsigned char*>(data);
+
+        IXPageManager(void* data){
+            this->pageData = data;
+            this->isLeaf = checkLeaf();
+            this->numEntries = calcNumEntries();
+            this->freeBytes = calcFreeBytes();
+            this->rightSibling = calcRightSibling();
+        }
+
+        bool checkLeaf(){
+            auto* dataC = static_cast<unsigned char*>(this->pageData);
             unsigned res;
             memcpy(&res,dataC + PAGE_SIZE - 1, 1);
             return res == 1;
         }
-        unsigned calcNumEntries(void* data){
-            auto* dataC = static_cast<unsigned char*>(data);
+        unsigned calcNumEntries(){
+            auto* dataC = static_cast<unsigned char*>(this->pageData);
             unsigned res;
             memcpy(&res,dataC + PAGE_SIZE - 3, 2);
             return res;
         }
-        unsigned calcFreeBytes(void* data){
-            auto* dataC = static_cast<unsigned char*>(data);
+        unsigned calcFreeBytes(){
+            auto* dataC = static_cast<unsigned char*>(this->pageData);
             unsigned res;
             memcpy(&res,dataC + PAGE_SIZE - 5, 2);
             return res;
         }
-        PageNum calcRightSibling(void* data){
-            auto* dataC = static_cast<unsigned char*>(data);
+        PageNum calcRightSibling(){
+            auto* dataC = static_cast<unsigned char*>(this->pageData);
             PageNum rightSibling;
             memcpy(&rightSibling,dataC + PAGE_SIZE - 9, UNSIGNED_SZ);
             return rightSibling;
         }
-        IXPageManager(void* data){
-            this->isLeaf = checkLeaf(data);
-            this->numEntries = calcNumEntries(data);
-            this->freeBytes = calcFreeBytes(data);
-            this->rightSibling = calcRightSibling(data);
-        }
+
         bool getIsLeaf(){
             return this->isLeaf;
         }
@@ -193,6 +197,10 @@ namespace PeterDB {
             return this->rightSibling;
         }
 
+        void* getPageData(){
+            return this->pageData;
+        }
+
         unsigned getMetadataLen(){
             return 1 + (UNSIGNED_SZ * 2);
         }
@@ -200,21 +208,21 @@ namespace PeterDB {
             return PAGE_SIZE - this->getMetadataLen();
         }
 
-        void updateNumEntries(void* data, int entriesChange){
+        void updateNumEntries(int entriesChange){
             this->numEntries += entriesChange;
-            auto* dataC = static_cast<char*>(data);
+            auto* dataC = static_cast<char*>(this->pageData);
             memcpy(dataC + PAGE_SIZE - 3, &this->numEntries, 2);
         }
 
-        void updateFreeBytes(void* data, int freeBytesChange){
+        void updateFreeBytes(int freeBytesChange){
             this->freeBytes += freeBytesChange;
-            auto* dataC = static_cast<char*>(data);
+            auto* dataC = static_cast<char*>(this->pageData);
             memcpy(dataC + PAGE_SIZE - 5, &this->freeBytes, 2);
         }
 
-        void getKeys(const Attribute &indexAttr, void* page, std::vector<IntKey> &keyList){
+        void getKeys(const Attribute &indexAttr, std::vector<IntKey> &keyList){
             unsigned currOff = 0;
-            auto* pageC = static_cast<unsigned char*>(page);
+            auto* pageC = static_cast<unsigned char*>(this->pageData);
             for(unsigned i = 0; i < this->numEntries; i++){
                 if(this->isLeaf){
                     IXLeafRecordManager leafRec(indexAttr,pageC + currOff);
@@ -238,9 +246,9 @@ namespace PeterDB {
             keyList.push_back(ik);
         }
 
-        void getKeys(const Attribute &indexAttr, void* page, std::vector<FloatKey> &keyList){
+        void getKeys(const Attribute &indexAttr, std::vector<FloatKey> &keyList){
             unsigned currOff = 0;
-            auto* pageC = static_cast<unsigned char*>(page);
+            auto* pageC = static_cast<unsigned char*>(this->pageData);
             for(unsigned i = 0; i < this->numEntries; i++){
                 if(this->isLeaf){
                     IXLeafRecordManager leafRec(indexAttr,pageC + currOff);
@@ -264,9 +272,9 @@ namespace PeterDB {
             keyList.push_back(fk);
         }
 
-        void getKeys(const Attribute &indexAttr, void* page, std::vector<SKey> &keyList){
+        void getKeys(const Attribute &indexAttr, std::vector<SKey> &keyList){
             unsigned currOff = 0;
-            auto* pageC = static_cast<unsigned char*>(page);
+            auto* pageC = static_cast<unsigned char*>(this->pageData);
             for(unsigned i = 0; i < this->numEntries; i++){
                 if(this->isLeaf){
                     IXLeafRecordManager leafRec(indexAttr,pageC + currOff);
@@ -295,6 +303,7 @@ namespace PeterDB {
         unsigned numEntries;
         unsigned freeBytes;
         PageNum rightSibling;
+        void* pageData;
     };
 
     class IX_ScanIterator {
