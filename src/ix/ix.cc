@@ -116,12 +116,13 @@ namespace PeterDB {
         return high + 1;
     }
 
-    unsigned* getInsertLoc(IXPageManager page, void* pageData, const Attribute &attribute, const void* key){
+    void getInsertLoc(IXPageManager page, void* pageData, const Attribute &attribute, const void* key, unsigned arr[]){
         unsigned insertOff = 0;
         unsigned shiftLen = 0;
         if(page.getNumEntries() == 0) {
-            unsigned arr[] = {insertOff,shiftLen};
-            return arr;
+            arr[0] = insertOff;
+            arr[1] = shiftLen;
+            return;
         }
         unsigned totalEntriesLen = page.getTotalIndexEntriesLen();
         switch(attribute.type){
@@ -176,8 +177,9 @@ namespace PeterDB {
                 break;
             }
         }
-        unsigned arr[] = {insertOff,shiftLen};
-        return arr;
+        arr[0] = insertOff;
+        arr[1] = shiftLen;
+        //return arr;
     }
 
     unsigned createLeafRec(void* data, const Attribute &attribute, const void *key, const RID &rid){
@@ -340,9 +342,10 @@ namespace PeterDB {
         auto *dataC = static_cast<char*>(data);
 
         if(page.getIsLeaf()){
-            unsigned* temp = getInsertLoc(page,data,attribute,key);  //find insert offset
-            unsigned insertOff = *(temp + 0);
-            unsigned shiftLen = *(temp + 1);
+            unsigned arr[2];
+            getInsertLoc(page,data,attribute,key, arr);  //find insert offset
+            unsigned insertOff = arr[0];
+            unsigned shiftLen = arr[1];
             unsigned size;
             void* dataToInsert = calloc(1,PAGE_SIZE);
             if(shiftLen == 0 || !keyExists(data,attribute,insertOff,key)){
