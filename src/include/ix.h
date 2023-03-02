@@ -205,7 +205,7 @@ namespace PeterDB {
             return 1 + (UNSIGNED_SZ * 2);
         }
         unsigned getTotalIndexEntriesLen(){
-            return PAGE_SIZE - this->getMetadataLen();
+            return PAGE_SIZE - this->freeBytes - this->getMetadataLen();
         }
 
         void updateNumEntries(int entriesChange){
@@ -240,10 +240,6 @@ namespace PeterDB {
                     currOff += indexRec.getRecordLen();
                 }
             }
-            IntKey ik;
-            ik.key = 0;
-            ik.offset = currOff;
-            keyList.push_back(ik);
         }
 
         void getKeys(const Attribute &indexAttr, std::vector<FloatKey> &keyList){
@@ -266,10 +262,6 @@ namespace PeterDB {
                     currOff += indexRec.getRecordLen();
                 }
             }
-            FloatKey fk;
-            fk.key = 0.0f;
-            fk.offset = currOff;
-            keyList.push_back(fk);
         }
 
         void getKeys(const Attribute &indexAttr, std::vector<SKey> &keyList){
@@ -292,10 +284,6 @@ namespace PeterDB {
                     currOff += indexRec.getRecordLen();
                 }
             }
-            SKey sk;
-            sk.key = 0;
-            sk.offset = currOff;
-            keyList.push_back(sk);
         }
 
     protected:

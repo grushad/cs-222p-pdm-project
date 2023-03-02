@@ -71,7 +71,7 @@ namespace PeterDB {
     }
 
     unsigned intBinSrch(unsigned key, vector<IntKey> vec){
-        unsigned low = 0, high = vec.size() - 2;
+        unsigned low = 0, high = vec.size() - 1;
         while(low <= high){
             unsigned mid = (low + high) / 2;
             if(vec[mid].key < key){
@@ -86,7 +86,7 @@ namespace PeterDB {
     }
 
     unsigned floatBinSrch(float key, vector<FloatKey> vec){
-        unsigned low = 0, high = vec.size() - 2;
+        unsigned low = 0, high = vec.size() - 1;
         while(low <= high){
             unsigned mid = (low + high) / 2;
             if(vec[mid].key < key){
@@ -101,7 +101,7 @@ namespace PeterDB {
     }
 
     unsigned strBinSrch(const char* key, vector<SKey> vec){
-        unsigned low = 0, high = vec.size() - 2;
+        unsigned low = 0, high = vec.size() - 1;
         while(low <= high){
             unsigned mid = (low + high) / 2;
             unsigned val = strcmp(key,vec[mid].key);
@@ -119,6 +119,11 @@ namespace PeterDB {
     unsigned* getInsertLoc(IXPageManager page, void* pageData, const Attribute &attribute, const void* key){
         unsigned insertOff = 0;
         unsigned shiftLen = 0;
+        if(page.getNumEntries() == 0) {
+            unsigned arr[] = {insertOff,shiftLen};
+            return arr;
+        }
+        unsigned totalEntriesLen = page.getTotalIndexEntriesLen();
         switch(attribute.type){
             case 0:
             {
@@ -127,8 +132,13 @@ namespace PeterDB {
                 vector<IntKey> vec;
                 vec.reserve(page.getNumEntries());
                 page.getKeys(attribute,vec);
-                insertOff = vec[intBinSrch(intKeyVal,vec)].offset;
-                shiftLen = vec[vec.size() - 1].offset - insertOff;
+                unsigned ind = intBinSrch(intKeyVal,vec);
+                if(ind == vec.size()){
+                    insertOff = totalEntriesLen;
+                }else{
+                    insertOff = vec[ind].offset;
+                    shiftLen = totalEntriesLen - insertOff;
+                }
                 break;
             }
             case 1:
@@ -138,8 +148,13 @@ namespace PeterDB {
                 vector<FloatKey> vec;
                 vec.reserve(page.getNumEntries());
                 page.getKeys(attribute,vec);
-                insertOff = vec[floatBinSrch(floatKeyVal,vec)].offset;
-                shiftLen = vec[vec.size() - 1].offset - insertOff;
+                unsigned ind = floatBinSrch(floatKeyVal,vec);
+                if(ind == vec.size()){
+                    insertOff = totalEntriesLen;
+                }else{
+                    insertOff = vec[ind].offset;
+                    shiftLen = totalEntriesLen - insertOff;
+                }
                 break;
             }
             case 2:
@@ -151,8 +166,13 @@ namespace PeterDB {
                 vector<SKey> vec;
                 vec.reserve(page.getNumEntries());
                 page.getKeys(attribute,vec);
-                insertOff = vec[strBinSrch(keyC,vec)].offset;
-                shiftLen = vec[vec.size() - 1].offset - insertOff;
+                unsigned ind = strBinSrch(keyC,vec);
+                if(ind == vec.size()){
+                    insertOff = totalEntriesLen;
+                }else{
+                    insertOff = vec[ind].offset;
+                    shiftLen = totalEntriesLen - insertOff;
+                }
                 break;
             }
         }
@@ -321,8 +341,8 @@ namespace PeterDB {
 
         if(page.getIsLeaf()){
             unsigned* temp = getInsertLoc(page,data,attribute,key);  //find insert offset
-            unsigned insertOff = temp[0];
-            unsigned shiftLen = temp[1];
+            unsigned insertOff = *(temp + 0);
+            unsigned shiftLen = *(temp + 1);
             unsigned size;
             void* dataToInsert = calloc(1,PAGE_SIZE);
             if(shiftLen == 0 || !keyExists(data,attribute,insertOff,key)){
