@@ -349,10 +349,17 @@ namespace PeterDB {
 
             void* leafPage = calloc(1,PAGE_SIZE); //initialize left child page of root
             initPage(leafPage,true);
-            unsigned size = createLeafRec(leafPage,attribute,key,rid);
+            void* dataToInsert = calloc(1, PAGE_SIZE / 2);
+            unsigned size = createLeafRec(dataToInsert,attribute,key,rid);
+            memmove(leafPage,dataToInsert,size);
             RC rc3 = ixFileHandle.fileHandle.appendPage(leafPage);
+            IXPageManager page(leafPage);
             free(leafPage);
-            
+            free(dataToInsert);
+
+            page.updateNumEntries(1);
+            page.updateFreeBytes(size * -1);
+            return 0;
         }
         void* data = malloc(PAGE_SIZE);
         ixFileHandle.fileHandle.readPage(node, data);
@@ -448,7 +455,6 @@ namespace PeterDB {
     IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
         void* newKey = nullptr;
         PageNum pgnum = 0;
-//        initIndexFile(ixFileHandle);
         insertHelper(ixFileHandle.root,ixFileHandle,attribute,key,rid, newKey, pgnum);
         return 0;
     }
@@ -465,10 +471,17 @@ namespace PeterDB {
                           bool lowKeyInclusive,
                           bool highKeyInclusive,
                           IX_ScanIterator &ix_ScanIterator) {
-        return -1;
+        ix_ScanIterator.ixFileHandle = ixFileHandle;
+        ix_ScanIterator.attribute = attribute;
+        ix_ScanIterator.lowKey = lowKey;
+        ix_ScanIterator.highKey = highKey;
+        ix_ScanIterator.lowKeyInc = lowKeyInclusive;
+        ix_ScanIterator.highKeyInc = highKeyInclusive;
+        return 0;
     }
 
     RC IndexManager::printBTree(IXFileHandle &ixFileHandle, const Attribute &attribute, std::ostream &out) const {
+
     }
 
     IX_ScanIterator::IX_ScanIterator() {
@@ -476,8 +489,21 @@ namespace PeterDB {
 
     IX_ScanIterator::~IX_ScanIterator() {
     }
-
+    PageNum getNextNode(IXPageManager page, const void* lowKey, bool lowKeyInc, const Attribute &attribute){
+        unsigned entries = page.getNumEntries();
+        
+        return 0;
+    }
     RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
+        PageNum node = this->ixFileHandle.root;
+        void* pageData = malloc(PAGE_SIZE);
+        this->ixFileHandle.fileHandle.readPage(node, pageData);
+        IXPageManager page(pageData);
+        while(!page.getIsLeaf()){
+            node = getNextNode(page, this->lowKey, this->lowKeyInc, this->attribute);
+            this->ixFileHandle.fileHandle.readPage(node, pageData);
+            page = IXPageManager(pageData);
+        }
         return -1;
     }
 

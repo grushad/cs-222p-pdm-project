@@ -295,6 +295,27 @@ namespace PeterDB {
         void* pageData;
     };
 
+    class IXFileHandle {
+    public:
+
+        // variables to keep counter for each operation
+        unsigned ixReadPageCounter;
+        unsigned ixWritePageCounter;
+        unsigned ixAppendPageCounter;
+        FileHandle fileHandle;
+        PageNum root;
+
+        // Constructor
+        IXFileHandle();
+
+        // Destructor
+        ~IXFileHandle();
+
+        // Put the current counter values of associated PF FileHandles into variables
+        RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
+
+    };
+
     class IX_ScanIterator {
     public:
 
@@ -309,28 +330,12 @@ namespace PeterDB {
 
         // Terminate index scan
         RC close();
-    };
-
-    class IXFileHandle {
-    public:
-
-        // variables to keep counter for each operation
-        unsigned ixReadPageCounter;
-        unsigned ixWritePageCounter;
-        unsigned ixAppendPageCounter;
-        FileHandle fileHandle;
-        PageNum root;
-//        bool init = false;
-
-        // Constructor
-        IXFileHandle();
-
-        // Destructor
-        ~IXFileHandle();
-
-        // Put the current counter values of associated PF FileHandles into variables
-        RC collectCounterValues(unsigned &readPageCount, unsigned &writePageCount, unsigned &appendPageCount);
-
+        IXFileHandle ixFileHandle;
+        Attribute attribute;
+        const void* lowKey;
+        const void* highKey;
+        bool lowKeyInc;
+        bool highKeyInc;
     };
 }// namespace PeterDB
 #endif // _ix_h_
