@@ -83,6 +83,7 @@ namespace PeterDB {
                 memcpy(&len,dataC,UNSIGNED_SZ);
                 dataC += UNSIGNED_SZ;
             }
+            this->key = malloc(len);
             memcpy(this->key,dataC,len);
         }
         unsigned getRecordLen(){
@@ -319,7 +320,7 @@ namespace PeterDB {
         unsigned ixAppendPageCounter;
         FileHandle fileHandle;
         PageNum root;
-        bool init = false;
+//        bool init = false;
 
         // Constructor
         IXFileHandle();

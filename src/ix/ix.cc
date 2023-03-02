@@ -30,7 +30,6 @@ namespace PeterDB {
     }
 
     RC initIndexFile(IXFileHandle &ixFileHandle){
-        ixFileHandle.init = true;
         if(ixFileHandle.fileHandle.numPages == 0){
             //need to initialize index file
             void* dummy = calloc(1,PAGE_SIZE); //dummy pointer page
@@ -39,20 +38,23 @@ namespace PeterDB {
             RC rc1 = ixFileHandle.fileHandle.appendPage(dummy);
             free(dummy);
 
-            auto* rootPage = static_cast<char*>(calloc(1,PAGE_SIZE));
-            initPage(rootPage, false);
-            unsigned leftChildPage = rootPageNum + 1;
-            memcpy(rootPage + PAGE_SIZE - 9,&leftChildPage,UNSIGNED_SZ); //initialize left child of root
-            RC rc2 = ixFileHandle.fileHandle.appendPage(rootPage);
-            free(rootPage);
+            return rc1;
 
-            void* leafPage = calloc(1,PAGE_SIZE); //initialize left child page of root
-            initPage(leafPage,true);
-            RC rc3 = ixFileHandle.fileHandle.appendPage(leafPage);
-            free(leafPage);
+//            auto* rootPage = static_cast<char*>(calloc(1,PAGE_SIZE));
+//            initPage(rootPage, false);
+//            unsigned leftChildPage = rootPageNum + 1;
+//            memcpy(rootPage + PAGE_SIZE - 9,&leftChildPage,UNSIGNED_SZ); //initialize left child of root
+//            RC rc2 = ixFileHandle.fileHandle.appendPage(rootPage);
+//            free(rootPage);
+//
+//            void* leafPage = calloc(1,PAGE_SIZE); //initialize left child page of root
+//            initPage(leafPage,true);
+//            RC rc3 = ixFileHandle.fileHandle.appendPage(leafPage);
+//            free(leafPage);
+//
+//            if(rc1 == -1 || rc2 == -1 || rc3 == -1)
+//                return -1;
 
-            if(rc1 == -1 || rc2 == -1 || rc3 == -1)
-                return -1;
         }
         return 0;
     }
@@ -336,6 +338,22 @@ namespace PeterDB {
     }
 
     RC insertHelper(PageNum node, IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid, void* newKey, PageNum &newPageEntry){
+        if(ixFileHandle.fileHandle.numPages == 1){
+            //only dummy node added
+            auto* rootPage = static_cast<char*>(calloc(1,PAGE_SIZE));
+            initPage(rootPage, false);
+            unsigned leftChildPage = node + 1;
+            memcpy(rootPage + PAGE_SIZE - 9,&leftChildPage,UNSIGNED_SZ); //initialize left child of root
+            RC rc2 = ixFileHandle.fileHandle.appendPage(rootPage);
+            free(rootPage);
+
+            void* leafPage = calloc(1,PAGE_SIZE); //initialize left child page of root
+            initPage(leafPage,true);
+            unsigned size = createLeafRec(leafPage,attribute,key,rid);
+            RC rc3 = ixFileHandle.fileHandle.appendPage(leafPage);
+            free(leafPage);
+            
+        }
         void* data = malloc(PAGE_SIZE);
         ixFileHandle.fileHandle.readPage(node, data);
         IXPageManager page(data);
@@ -430,6 +448,7 @@ namespace PeterDB {
     IndexManager::insertEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
         void* newKey = nullptr;
         PageNum pgnum = 0;
+//        initIndexFile(ixFileHandle);
         insertHelper(ixFileHandle.root,ixFileHandle,attribute,key,rid, newKey, pgnum);
         return 0;
     }
