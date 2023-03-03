@@ -57,6 +57,7 @@ namespace PeterDB {
         unsigned getKeyLen(){
             return this->len;
         }
+        IXRecordManager();
     protected:
         unsigned len;
         void* key;

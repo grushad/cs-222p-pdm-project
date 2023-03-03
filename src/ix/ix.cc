@@ -489,6 +489,12 @@ namespace PeterDB {
 
     }
 
+    IXRecordManager::IXRecordManager(){
+        
+    }
+    IXLeafRecordManager::IXLeafRecordManager(){
+
+    }
     IX_ScanIterator::IX_ScanIterator() {
     }
 
