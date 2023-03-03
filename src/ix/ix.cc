@@ -477,6 +477,11 @@ namespace PeterDB {
         ix_ScanIterator.highKey = highKey;
         ix_ScanIterator.lowKeyInc = lowKeyInclusive;
         ix_ScanIterator.highKeyInc = highKeyInclusive;
+        ix_ScanIterator.currpage = 0; //maybe root; handled in getNextEntry method
+        ix_ScanIterator.currOff = 0;
+        ix_ScanIterator.currEntryNum = 1; //accessing the first entry
+        ix_ScanIterator.numRIDs = 0;
+//        ix_ScanIterator.curLeafRec = IXLeafRecordManager();
         return 0;
     }
 
@@ -490,12 +495,101 @@ namespace PeterDB {
     IX_ScanIterator::~IX_ScanIterator() {
     }
     PageNum getNextNode(IXPageManager page, const void* lowKey, bool lowKeyInc, const Attribute &attribute){
-        unsigned entries = page.getNumEntries();
-        
+        unsigned numEntries = page.getNumEntries();
+        unsigned curr = 0;
+        auto* pageC = static_cast<char*>(page.getPageData());
+        IXIndexRecordManager indexRec(attribute,pageC + curr);
+        PageNum nextPage = page.getRightSibling(); //left child of the index node;
+        for (unsigned i = 0; i < numEntries; i++) {
+            if (isGreaterKey(attribute, indexRec, lowKey)) {
+                break;
+            }
+            curr += indexRec.getRecordLen();
+            nextPage = indexRec.getRightChild();
+            indexRec = IXIndexRecordManager(attribute, pageC + curr);
+        }
+        return nextPage;
+    }
+
+    unsigned checkIfValidKey(IXLeafRecordManager leafrec, Attribute &attribute, const void* lowKey, bool lowKeyInc, const void* highKey, bool highKeyInc){
+        switch(attribute.type){
+            case 0: {
+                unsigned lowK;
+                memcpy(&lowK, lowKey, UNSIGNED_SZ);
+                unsigned curKey;
+                memcpy(&curKey, leafrec.getKey(), UNSIGNED_SZ);
+                unsigned highK;
+                memcpy(&highK, highKey, UNSIGNED_SZ);
+
+                bool isBetween = (lowK < curKey) && (highK > curKey);
+                bool isEqual = (lowKeyInc && (lowK == curKey)) || (highKeyInc && (highK ==  curKey));
+                bool isGreater = curKey > highK;
+                if(isGreater)
+                    return 2; // need to stop iterator;
+                if(isEqual || isBetween)
+                    return 0; // valid record
+                return 1; //invalid record but continue scanning;
+            }
+            case 1: {
+                float lowK;
+                memcpy(&lowK, lowKey, UNSIGNED_SZ);
+                float curKey;
+                memcpy(&curKey, leafrec.getKey(), UNSIGNED_SZ);
+                float highK;
+                memcpy(&highK, highKey, UNSIGNED_SZ);
+
+                bool isBetween = (lowK < curKey) && (highK > curKey);
+                bool isEqual = (lowKeyInc && (lowK == curKey)) || (highKeyInc && (highK ==  curKey));
+                bool isGreater = curKey > highK;
+                if(isGreater)
+                    return 2; // need to stop iterator;
+                if(isEqual || isBetween)
+                    return 0; // valid record
+                return 1; //invalid record but continue scanning;
+            }
+            case 2: {
+                auto* lowKeyC = static_cast<const char *>(lowKey);
+                unsigned lowKeyLen;
+                memcpy(&lowKeyLen,lowKeyC,UNSIGNED_SZ);
+                std::string lowK(reinterpret_cast<char const *>(lowKeyC + UNSIGNED_SZ), lowKeyLen);
+
+                auto* curKeyC = static_cast<char *>(leafrec.getKey());
+                std::string curKey(reinterpret_cast<char const *>(curKeyC + UNSIGNED_SZ), leafrec.getKeyLen());
+
+                auto* highKeyC = static_cast<const char *>(lowKey);
+                unsigned highKeyLen;
+                memcpy(&highKeyLen,highKeyC,UNSIGNED_SZ);
+                std::string highK(reinterpret_cast<char const *>(highKeyC + UNSIGNED_SZ), highKeyLen);
+
+                int lowCmp = strcmp(curKey.c_str(), lowK.c_str());
+                int highCmp = strcmp(curKey.c_str(), highK.c_str());
+
+                bool isBetween = (lowCmp < 0) && (highCmp < 0);
+                bool isEqual = (lowKeyInc && lowCmp == 0) || (highKeyInc && highCmp == 0);
+                bool isGreater = highCmp > 0;
+
+                if(isGreater)
+                    return 2; // need to stop iterator;
+                if(isEqual || isBetween)
+                    return 0; // valid record
+                return 1; //invalid record but continue scanning;
+            }
+        }
         return 0;
     }
+
     RC IX_ScanIterator::getNextEntry(RID &rid, void *key) {
+        if(this->numRIDs != 0){
+            rid = this->RIDList[--this->numRIDs];
+            unsigned len = UNSIGNED_SZ;
+            if(this->attribute.type == 2){
+                len += this->curLeafRec.getKeyLen();
+            }
+            memcpy(key,this->curLeafRec.getKey(),len);
+        }
         PageNum node = this->ixFileHandle.root;
+        if(this->currpage != 0)
+            node = this->currpage;
         void* pageData = malloc(PAGE_SIZE);
         this->ixFileHandle.fileHandle.readPage(node, pageData);
         IXPageManager page(pageData);
@@ -504,7 +598,29 @@ namespace PeterDB {
             this->ixFileHandle.fileHandle.readPage(node, pageData);
             page = IXPageManager(pageData);
         }
-        return -1;
+        this->currpage = node;
+        unsigned leafPageEntries = page.getNumEntries();
+        if(this->currEntryNum > leafPageEntries){
+            this->currpage = page.getRightSibling();
+            this->currOff = 0;
+            this->currEntryNum = 1;
+            this->numRIDs = 0;
+            this->ixFileHandle.fileHandle.readPage(this->currpage,pageData);
+        }
+        auto* pageDataC = static_cast<char *>(pageData);
+        this->curLeafRec = IXLeafRecordManager (this->attribute,pageDataC + this->currOff);
+        unsigned isValidKey = checkIfValidKey(this->curLeafRec, this->attribute, this->lowKey, this->lowKeyInc, this->highKey, this->highKeyInc);
+        while( isValidKey != 0 || isValidKey != 2 ){
+
+            this->currOff += this->curLeafRec.getRecordLen();
+            this->currEntryNum++;
+        }
+
+        if(isValidKey == 2)
+            return IX_EOF;
+
+        free(pageData);
+        return 0;
     }
 
     RC IX_ScanIterator::close() {
