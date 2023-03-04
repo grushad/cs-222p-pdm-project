@@ -86,6 +86,12 @@ namespace PeterDB {
                 this->recordLen += UNSIGNED_SZ + (UNSIGNED_SZ / 2);
             }
         }
+        unsigned getNumRIDs(){
+            return this->numRIDs;
+        }
+        std::vector<RID> getRIDList(){
+            return this->RIDList;
+        }
         IXLeafRecordManager();
     protected:
         unsigned numRIDs;
@@ -160,6 +166,12 @@ namespace PeterDB {
         }
         PageNum getRightSibling(){
             return this->rightSibling;
+        }
+
+        void setRightSibling(PageNum rightSib){
+            auto* pageDataC = static_cast<char *>(this->pageData);
+            memcpy(pageDataC + PAGE_SIZE - 9, &rightSib, UNSIGNED_SZ);
+            this->rightSibling = rightSib;
         }
 
         void* getPageData(){

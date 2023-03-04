@@ -1,4 +1,9 @@
  #include "src/include/ix.h"
+/*
+ * implement root as leaf; handle leaf split and root creation separately if only leaf exists
+ * print me just do a dfs on the leaf nodes when root is empty
+ * you can implement insertion anyway -> root and leaf at the start or just the leaf at the start; both should work as long as tests pass
+ * */
 using namespace std;
 namespace PeterDB {
     IndexManager &IndexManager::instance() {
@@ -307,7 +312,7 @@ namespace PeterDB {
                 unsigned mid = (oldPage.getNumEntries() + 1) / 2; // + 1 for new entry to find mid
 
                 //move the 2nd half of data to new page
-                unsigned bytesToShift = vec[vec.size() - 1].offset - vec[mid].offset;
+                unsigned bytesToShift = oldPage.getTotalIndexEntriesLen() - vec[mid].offset;
                 memcpy(newPageC,oldPageC + vec[mid].offset, bytesToShift);
                 unsigned entriesMoved = oldPage.getNumEntries() - mid + 1;
                 oldPage.updateFreeBytes(bytesToShift);
@@ -318,18 +323,26 @@ namespace PeterDB {
 
                 if(ind < mid){
                     //add new key to the old page
-                    unsigned shiftBytesNewRec = vec[mid].offset - vec[ind].offset; //bytes to shift for new record
+                    unsigned shiftBytesNewRec = oldPage.getTotalIndexEntriesLen() - vec[ind].offset; //bytes to shift for new record
                     memmove(oldPageC + vec[ind].offset + newRecSize, oldPageC + vec[ind].offset, shiftBytesNewRec);
                     memmove(oldPageC + vec[ind].offset,recordData,newRecSize);
+                    oldPage.updateFreeBytes(newRecSize * -1);
+                    oldPage.updateNumEntries(1);
                 } else{
                     //right page
-                    unsigned offsetChange = vec[mid].offset; //offset will change by offset of mid record; it will reduce by this value
-                    unsigned shiftBytes = (vec[vec.size() - 1].offset - offsetChange) - (vec[ind].offset - offsetChange);
-                    memmove(newPageC + vec[ind].offset - offsetChange + newRecSize, oldPageC + vec[ind].offset - offsetChange, shiftBytes);
-                    memmove(newPageC + vec[ind].offset - offsetChange,recordData,newRecSize);
+                    if(ind == vec.size()){
+                        memcpy(newPageC + newPage.getTotalIndexEntriesLen(),recordData,newRecSize); //insert at last
+                    }else{
+                        unsigned offsetChange = vec[mid].offset; //offset will change by offset of mid record; it will reduce by this value
+                        unsigned shiftBytes = newPage.getTotalIndexEntriesLen() - (vec[ind].offset - offsetChange);
+                        memmove(newPageC + vec[ind].offset - offsetChange + newRecSize, oldPageC + vec[ind].offset - offsetChange, shiftBytes);
+                        memmove(newPageC + vec[ind].offset - offsetChange,recordData,newRecSize);
+                    }
+                    newPage.updateFreeBytes(newRecSize * -1);
+                    newPage.updateNumEntries(1);
                 }
-                splitKey = calloc(1,UNSIGNED_SZ);
-                memcpy(splitKey, &vec[ind].key, UNSIGNED_SZ);
+//                splitKey = calloc(1,UNSIGNED_SZ);
+                memcpy(splitKey, newPageC, UNSIGNED_SZ); //first key on the new page
                 break;
             }
             case 1: break;
@@ -352,13 +365,14 @@ namespace PeterDB {
             void* dataToInsert = calloc(1, PAGE_SIZE / 2);
             unsigned size = createLeafRec(dataToInsert,attribute,key,rid);
             memmove(leafPage,dataToInsert,size);
-            RC rc3 = ixFileHandle.fileHandle.appendPage(leafPage);
-            IXPageManager page(leafPage);
-            free(leafPage);
-            free(dataToInsert);
 
+            IXPageManager page(leafPage);
             page.updateNumEntries(1);
             page.updateFreeBytes(size * -1);
+            RC rc3 = ixFileHandle.fileHandle.appendPage(page.getPageData());
+
+            free(leafPage);
+            free(dataToInsert);
             return 0;
         }
         void* data = malloc(PAGE_SIZE);
@@ -400,15 +414,18 @@ namespace PeterDB {
                 page.updateFreeBytes(size * -1);
                 newPageEntry = 0;
                 newKey = nullptr;
+                ixFileHandle.fileHandle.writePage(node, page.getPageData());
             }else{
                 void* newPageData = calloc(1,PAGE_SIZE);
                 initPage(newPageData,true);
                 IXPageManager newPage(newPageData);
                 splitPage(page,newPage,attribute,dataToInsert,key,size, newKey);
-                ixFileHandle.fileHandle.appendPage(newPageData);
+                page.setRightSibling(ixFileHandle.fileHandle.numPages);
+                ixFileHandle.fileHandle.writePage(node,page.getPageData());
+                ixFileHandle.fileHandle.appendPage(page.getPageData());
                 newPageEntry = ixFileHandle.fileHandle.getNumberOfPages() - 1;
+                free(newPageData);
             }
-
         }else{
             //find subtree to navigate to; iterate linearly through keys on page
             unsigned numEntries = page.getNumEntries();
@@ -423,10 +440,12 @@ namespace PeterDB {
                 nextPage = indexRec.getRightChild();
                 indexRec = IXIndexRecordManager(attribute, dataC + curr);
             }
+            newKey = malloc(PAGE_SIZE / 2);
             insertHelper(nextPage, ixFileHandle, attribute, key, rid, newKey, newPageEntry);
-            if(newPageEntry == 0)
+            if(newPageEntry == 0) {
+                free(newKey);
                 return 0;
-            else{
+            }else{
                 void* indexData = malloc(PAGE_SIZE / 2);
                 unsigned newIndRecSize = createIndexRec(indexData,attribute,newKey,newPageEntry);
                 if(page.getFreeBytes() >= newIndRecSize){
@@ -471,6 +490,8 @@ namespace PeterDB {
                           bool lowKeyInclusive,
                           bool highKeyInclusive,
                           IX_ScanIterator &ix_ScanIterator) {
+        if(ixFileHandle.fileHandle.fileP == nullptr)
+            return -1;
         ix_ScanIterator.ixFileHandle = ixFileHandle;
         ix_ScanIterator.attribute = attribute;
         ix_ScanIterator.lowKey = lowKey;
@@ -481,12 +502,26 @@ namespace PeterDB {
         ix_ScanIterator.currOff = 0;
         ix_ScanIterator.currEntryNum = 1; //accessing the first entry
         ix_ScanIterator.numRIDs = 0;
-//        ix_ScanIterator.curLeafRec = IXLeafRecordManager();
+        ix_ScanIterator.curLeafRec = IXLeafRecordManager();
         return 0;
     }
 
-    RC IndexManager::printBTree(IXFileHandle &ixFileHandle, const Attribute &attribute, std::ostream &out) const {
+    void preorder(PageNum node, IXFileHandle ixFileHandle, Attribute &attribute, std::ostream &out){
+        if(node == 0)
+            return;
+        void* pageData = malloc(PAGE_SIZE);
+        ixFileHandle.fileHandle.readPage(node, pageData);
+        IXPageManager page(pageData);
+        //make struct of keys and children???
+//        switch(attribute.type){
+//            case 0: break;
+//            case 1: break;
+//            case 2: break;
+//        }
+    }
 
+    RC IndexManager::printBTree(IXFileHandle &ixFileHandle, const Attribute &attribute, std::ostream &out) const {
+        return 0;
     }
 
     IXRecordManager::IXRecordManager(){
@@ -506,10 +541,11 @@ namespace PeterDB {
         auto* pageC = static_cast<char*>(page.getPageData());
         IXIndexRecordManager indexRec(attribute,pageC + curr);
         PageNum nextPage = page.getRightSibling(); //left child of the index node;
+        if(lowKey == nullptr)
+            return nextPage;
         for (unsigned i = 0; i < numEntries; i++) {
-            if (isGreaterKey(attribute, indexRec, lowKey)) {
+            if (isGreaterKey(attribute, indexRec, lowKey))
                 break;
-            }
             curr += indexRec.getRecordLen();
             nextPage = indexRec.getRightChild();
             indexRec = IXIndexRecordManager(attribute, pageC + curr);
@@ -520,12 +556,14 @@ namespace PeterDB {
     unsigned checkIfValidKey(IXLeafRecordManager leafrec, Attribute &attribute, const void* lowKey, bool lowKeyInc, const void* highKey, bool highKeyInc){
         switch(attribute.type){
             case 0: {
-                unsigned lowK;
-                memcpy(&lowK, lowKey, UNSIGNED_SZ);
-                unsigned curKey;
+                int lowK = INT_MIN;
+                if(lowKey != nullptr)
+                    memcpy(&lowK, lowKey, UNSIGNED_SZ);
+                int curKey;
                 memcpy(&curKey, leafrec.getKey(), UNSIGNED_SZ);
-                unsigned highK;
-                memcpy(&highK, highKey, UNSIGNED_SZ);
+                int highK = INT_MAX;
+                if(highKey != nullptr)
+                    memcpy(&highK, highKey, UNSIGNED_SZ);
 
                 bool isBetween = (lowK < curKey) && (highK > curKey);
                 bool isEqual = (lowKeyInc && (lowK == curKey)) || (highKeyInc && (highK ==  curKey));
@@ -534,7 +572,8 @@ namespace PeterDB {
                     return 2; // need to stop iterator;
                 if(isEqual || isBetween)
                     return 0; // valid record
-                return 1; //invalid record but continue scanning;
+                else
+                    return 1; //invalid record but continue scanning;
             }
             case 1: {
                 float lowK;
@@ -551,7 +590,8 @@ namespace PeterDB {
                     return 2; // need to stop iterator;
                 if(isEqual || isBetween)
                     return 0; // valid record
-                return 1; //invalid record but continue scanning;
+                else
+                    return 1; //invalid record but continue scanning;
             }
             case 2: {
                 auto* lowKeyC = static_cast<const char *>(lowKey);
@@ -578,7 +618,8 @@ namespace PeterDB {
                     return 2; // need to stop iterator;
                 if(isEqual || isBetween)
                     return 0; // valid record
-                return 1; //invalid record but continue scanning;
+                else
+                    return 1; //invalid record but continue scanning;
             }
         }
         return 0;
@@ -592,6 +633,7 @@ namespace PeterDB {
                 len += this->curLeafRec.getKeyLen();
             }
             memcpy(key,this->curLeafRec.getKey(),len);
+            return 0;
         }
         PageNum node = this->ixFileHandle.root;
         if(this->currpage != 0)
@@ -613,24 +655,38 @@ namespace PeterDB {
             this->numRIDs = 0;
             this->ixFileHandle.fileHandle.readPage(this->currpage,pageData);
         }
+        if(this->currpage == 0){
+            return IX_EOF;
+        }
         auto* pageDataC = static_cast<char *>(pageData);
         this->curLeafRec = IXLeafRecordManager (this->attribute,pageDataC + this->currOff);
         unsigned isValidKey = checkIfValidKey(this->curLeafRec, this->attribute, this->lowKey, this->lowKeyInc, this->highKey, this->highKeyInc);
-        while( isValidKey != 0 || isValidKey != 2 ){
-
+        while(isValidKey == 1 ){
             this->currOff += this->curLeafRec.getRecordLen();
-            this->currEntryNum++;
-        }
 
+            this->curLeafRec = IXLeafRecordManager (this->attribute,pageDataC + this->currOff);
+            isValidKey = checkIfValidKey(this->curLeafRec, this->attribute, this->lowKey, this->lowKeyInc, this->highKey, this->highKeyInc);
+        }
         if(isValidKey == 2)
             return IX_EOF;
-
+        if(isValidKey == 0){
+            this->numRIDs = this->curLeafRec.getNumRIDs();
+            this->RIDList = this->curLeafRec.getRIDList();
+            rid = this->RIDList[--this->numRIDs];
+            unsigned len = UNSIGNED_SZ;
+            if(this->attribute.type == 2){
+                len += this->curLeafRec.getKeyLen();
+            }
+            this->currEntryNum++;
+            memcpy(key,this->curLeafRec.getKey(),len);
+            return 0;
+        }
         free(pageData);
         return 0;
     }
 
     RC IX_ScanIterator::close() {
-        return -1;
+        return 0;
     }
 
     IXFileHandle::IXFileHandle() {
