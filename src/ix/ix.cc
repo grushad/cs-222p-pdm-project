@@ -352,6 +352,7 @@ namespace PeterDB {
     }
 
     RC insertHelper(PageNum node, IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid, void* newKey, PageNum &newPageEntry){
+
         if(ixFileHandle.fileHandle.numPages == 1){
             //only dummy node added
             auto* rootPage = static_cast<char*>(calloc(1,PAGE_SIZE));
@@ -504,6 +505,7 @@ namespace PeterDB {
         ix_ScanIterator.currEntryNum = 1; //accessing the first entry
         ix_ScanIterator.numRIDs = 0;
         ix_ScanIterator.curLeafRec = IXLeafRecordManager();
+        ixFileHandle.fileHandle.readPageCounter+= 2;
         return 0;
     }
 
