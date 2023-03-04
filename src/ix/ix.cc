@@ -1,4 +1,5 @@
  #include "src/include/ix.h"
+#include <climits>
 /*
  * implement root as leaf; handle leaf split and root creation separately if only leaf exists
  * print me just do a dfs on the leaf nodes when root is empty
