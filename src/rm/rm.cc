@@ -110,7 +110,7 @@ namespace PeterDB {
         unsigned lenTableName = tableName.length();
         unsigned lenFileName = fileName.length();
 
-        void * temp = malloc(PAGE_SIZE);
+        void * temp = calloc(1,PAGE_SIZE);
         if(temp == nullptr)
             return -1;
         auto * dataC = static_cast<unsigned char *>(temp);
@@ -146,7 +146,7 @@ namespace PeterDB {
         dataC += UNSIGNED_SZ;
 
         memcpy(data, dataC - recSz,recSz);
-//        free(temp);
+        free(temp);
         return recSz;
     }
 
@@ -190,7 +190,7 @@ namespace PeterDB {
         dataC += UNSIGNED_SZ;
 
         memcpy(data,dataC - recSz,recSz);
-//        free(temp);
+        free(temp);
         return 0;
     }
 
@@ -221,7 +221,7 @@ namespace PeterDB {
         const std::vector<Attribute> colRecordDescriptor = column.getRecordDesc();
 
         RID rid;
-        void *data = malloc( PAGE_SIZE);
+        void *data = calloc( 1,PAGE_SIZE);
         if(data == nullptr)
             return -1;
         createTablesData(data, table);
@@ -248,7 +248,7 @@ namespace PeterDB {
             rbfm.insertRecord(colFileHandle,colRecordDescriptor,data,rid);
         }
 
-//        free(data);
+        free(data);
         rbfm.closeFile(tableFileHandle);
         rbfm.closeFile(colFileHandle);
         return 0;
@@ -275,7 +275,7 @@ namespace PeterDB {
         TableManager table(TABLES,attrs);
         TableManager newTable(tableName,attrs);
 
-        void *data = malloc(PAGE_SIZE);
+        void *data = calloc(1,PAGE_SIZE);
         if(data == nullptr)
             return -1;
         createTablesData(data, newTable);
@@ -293,7 +293,7 @@ namespace PeterDB {
         }
         rbfm.closeFile(tableFileHandle);
         rbfm.closeFile(colFileHandle);
-//        free(data);
+        free(data);
         return 0;
     }
 
@@ -341,7 +341,7 @@ namespace PeterDB {
         std::vector<Attribute> tableRecDesc = table.getRecordDesc();
         unsigned nullBytes = ceil((double) tableRecDesc.size() / 8);
         unsigned tableId = 3;
-        void * temp = malloc(PAGE_SIZE);
+        void * temp = calloc(1,PAGE_SIZE);
         if(temp == nullptr)
             return -1;
         auto *data = static_cast<unsigned char*>(temp);
@@ -525,8 +525,6 @@ namespace PeterDB {
     }
 
     RC RM_ScanIterator::close() {
-        //this->rbfmScanIterator.close();
-        //delete this;
         return 0;
     }
 

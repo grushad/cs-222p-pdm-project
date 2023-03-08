@@ -465,8 +465,11 @@ namespace PeterDB {
                     initPage(newPageData,false);
                     IXPageManager newPage(newPageData);
                     splitPage(page,newPage,attribute,indexData,key,newIndRecSize,newKey);
+//                    page.setRightSibling(ixFileHandle.fileHandle.numPages);
+                    ixFileHandle.fileHandle.writePage(node,page.getPageData());
                     ixFileHandle.fileHandle.appendPage(newPageData);
                     newPageEntry = ixFileHandle.fileHandle.getNumberOfPages() - 1;
+                    free(newPageData);
                 }
             }
         }
@@ -505,7 +508,7 @@ namespace PeterDB {
         ix_ScanIterator.currEntryNum = 1; //accessing the first entry
         ix_ScanIterator.numRIDs = 0;
         ix_ScanIterator.curLeafRec = IXLeafRecordManager();
-        ixFileHandle.fileHandle.readPageCounter+= 2;
+//        ixFileHandle.fileHandle.readPageCounter+= 2;
         return 0;
     }
 
