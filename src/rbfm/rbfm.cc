@@ -788,7 +788,9 @@ namespace PeterDB {
         while(this->currRid.pageNum < fileHandle.numPages){
             auto *temp = static_cast<unsigned char*>(attrData);
             unsigned len = UNSIGNED_SZ;
-            RC rc = rbfm.readAttribute(this->fileHandle, this->recordDescriptor, this->currRid, this->conditionAttr, attrData);
+            RC rc = 0;
+            //if(this->compOp != NO_OP)
+                rc = rbfm.readAttribute(this->fileHandle, this->recordDescriptor, this->currRid, this->conditionAttr, attrData);
             if(rc == 0) {
                 unsigned pos = getAttrNum(this->conditionAttr, this->recordDescriptor);
                 if (compAttrVal(this->value,attrData,this->compOp,recordDescriptor[pos])) {
