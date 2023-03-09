@@ -783,7 +783,7 @@ namespace PeterDB {
 
     RC RBFM_ScanIterator::getNextRecord(RID &rid, void *data) {
         RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
-        void *attrData = ::malloc(PAGE_SIZE);
+        void *attrData = calloc(1,PAGE_SIZE);
 
         while(this->currRid.pageNum < fileHandle.numPages){
             auto *temp = static_cast<unsigned char*>(attrData);

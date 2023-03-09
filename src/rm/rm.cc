@@ -156,7 +156,7 @@ namespace PeterDB {
         unsigned len = a.length;
         unsigned lenColName = colName.length();
 
-        void * temp = malloc(PAGE_SIZE);
+        void * temp = calloc(1,PAGE_SIZE);
         if(temp == nullptr)
             return -1;
         auto* dataC = static_cast<unsigned char*>(temp);
