@@ -103,17 +103,11 @@ namespace PeterDB {
 
     };
 
-    typedef enum {
-        System = 0, User = 1
-    } TableType;
-
     class TableManager{
     public:
         TableManager(const std::string &tableName, const std::vector<Attribute> &attrs ){
             this->tableName = tableName;
-            this->tableType = User;
             if(strcmp(tableName.c_str(),TABLES) == 0 || strcmp(tableName.c_str(),COLUMNS) == 0){
-                this->tableType = System;
                 this->setCatalogRecDesc();
             }else{
                 this->recordDesc = attrs;
@@ -123,8 +117,6 @@ namespace PeterDB {
         }
         ~TableManager() = default;;
         unsigned getTableId();
-//        void setTableId(unsigned tableId);
-        TableType getTableType();
         std::string getTableName();
         std::string getFileName();
         std::vector<Attribute>getRecordDesc();
@@ -135,7 +127,6 @@ namespace PeterDB {
         std::string tableName;
         std::string fileName;
         unsigned tableId;
-        TableType tableType;
         std::vector<Attribute> recordDesc;
     };
 

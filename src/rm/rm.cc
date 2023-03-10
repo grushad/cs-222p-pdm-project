@@ -24,9 +24,6 @@ namespace PeterDB {
     unsigned TableManager::getTableId(){
         return this->tableId;
     }
-    TableType TableManager::getTableType() {
-        return this->tableType;
-    }
     std::string TableManager::getTableName() {
         return this->tableName;
     }
@@ -61,12 +58,6 @@ namespace PeterDB {
             fileName.type = TypeVarChar;
             fileName.length = VARCHAR_SZ;
             this->recordDesc.push_back(fileName);
-
-            Attribute tableType;
-            tableType.name = "table-type";
-            tableType.type = TypeInt;
-            tableType.length = UNSIGNED_SZ;
-            this->recordDesc.push_back(tableType);
 
         }else{
             //create for columns
@@ -106,7 +97,7 @@ namespace PeterDB {
         unsigned tableId = table.getTableId();
         std::string tableName = table.getTableName();
         std::string fileName = table.getFileName();
-        TableType tableType = table.getTableType();
+        //TableType tableType = table.getTableType();
         unsigned lenTableName = tableName.length();
         unsigned lenFileName = fileName.length();
 
@@ -140,10 +131,6 @@ namespace PeterDB {
         memcpy(dataC,fileName.c_str(),lenFileName);
         recSz += lenFileName;
         dataC += lenFileName;
-
-        memcpy(dataC,&tableType,UNSIGNED_SZ);
-        recSz += UNSIGNED_SZ;
-        dataC += UNSIGNED_SZ;
 
         memcpy(data, dataC - recSz,recSz);
         free(temp);
@@ -472,7 +459,7 @@ namespace PeterDB {
             return -1;
         std::vector<Attribute> recordDescriptor;
         getAttributes(tableName,recordDescriptor);
-        if(rbfm.readRecord(fileHandle,recordDescriptor,rid,data) == -1)
+        if(rbfm.readRecord(fileHandle,recordDescriptor,rid,data) < 0)
             return -1;
         rbfm.closeFile(fileHandle);
         return 0;
