@@ -88,6 +88,7 @@ namespace PeterDB {
             ::fwrite(firstP,PAGE_SIZE,1,fileHandle.fileP);
             fclose(fileHandle.fileP);
             fileHandle.fileP = nullptr;
+            free(firstPage);
             return 0;
         }
         return -1;

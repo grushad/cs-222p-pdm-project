@@ -274,7 +274,7 @@ namespace PeterDB {
         ::memcpy(&len, pageContent, UNSIGNED_SZ);
         //check if trying to read a deleted record
         if(len == 0)
-            return -1;
+            return -4;
 
         unsigned offset = 0;
         pageContent += UNSIGNED_SZ;
@@ -788,9 +788,7 @@ namespace PeterDB {
         while(this->currRid.pageNum < fileHandle.numPages){
             auto *temp = static_cast<unsigned char*>(attrData);
             unsigned len = UNSIGNED_SZ;
-            RC rc = 0;
-            //if(this->compOp != NO_OP)
-                rc = rbfm.readAttribute(this->fileHandle, this->recordDescriptor, this->currRid, this->conditionAttr, attrData);
+            RC rc = rbfm.readAttribute(this->fileHandle, this->recordDescriptor, this->currRid, this->conditionAttr, attrData);
             if(rc == 0) {
                 unsigned pos = getAttrNum(this->conditionAttr, this->recordDescriptor);
                 if (compAttrVal(this->value,attrData,this->compOp,recordDescriptor[pos])) {
@@ -800,6 +798,8 @@ namespace PeterDB {
                     return 0;
                 }
                 this->currRid.slotNum++;
+            }else if(rc == -4){
+                this->currRid.slotNum++; //if trying to read a deleted record go to next record
             }else if(rc == -2){
                 this->currRid.pageNum++; //reached end of records
             }else{
