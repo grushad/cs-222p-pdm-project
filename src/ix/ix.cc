@@ -15,12 +15,9 @@ namespace PeterDB {
     PagedFileManager &pfm = PagedFileManager::instance();
 
     void initPage(void * page, bool isLeaf){
-        unsigned short freeBytes = PAGE_SIZE - (1 + (UNSIGNED_SZ * 2)); // leaf | free | entries | right child
+        unsigned short freeBytes = PAGE_SIZE - (1 + (UNSIGNED_SZ * 2)); // leaf | entries | free bytes | right child
         unsigned rightChild = 0;
-        char isLeafVal = 0;
-        if(isLeaf){
-            isLeafVal = 1;
-        }
+        char isLeafVal = isLeaf ? 1 : 0;
         auto* pageC = static_cast<unsigned char*>(page);
         memcpy(pageC + PAGE_SIZE - 1, &isLeafVal, 1);
         memcpy(pageC + PAGE_SIZE - (1 + UNSIGNED_SZ), &freeBytes, UNSIGNED_SZ / 2);
@@ -42,6 +39,7 @@ namespace PeterDB {
             unsigned rootPageNum = 1; //since dummy page is page 0
             memcpy(dummy,&rootPageNum,UNSIGNED_SZ);
             RC rc1 = ixFileHandle.fileHandle.appendPage(dummy);
+            ixFileHandle.root = 1;
             free(dummy);
 
             return rc1;
@@ -70,7 +68,6 @@ namespace PeterDB {
             return -1;
         RC rc = pfm.openFile(fileName,ixFileHandle.fileHandle);
         initIndexFile(ixFileHandle);
-        ixFileHandle.root = 1;
         return rc;
     }
 
@@ -261,9 +258,9 @@ namespace PeterDB {
                     return true;
                 else
                     return false;
-            case 1: unsigned fKey;
+            case 1: float fKey;
                 memcpy(&fKey,indexRec.getKey(),UNSIGNED_SZ);
-                unsigned fkeyToInsert;
+                float fkeyToInsert;
                 memcpy(&fkeyToInsert,key,UNSIGNED_SZ);
                 if(fKey > fkeyToInsert)
                     return true;
