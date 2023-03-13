@@ -449,7 +449,7 @@ namespace PeterDB {
 
         //update metadata i.e.free bytes and number of records
         pageData += (numRec * 2 * UNSIGNED_SZ);
-        freeBytes += (currLen + (UNSIGNED_SZ * 2)); //record size  + slot directory used by record
+        freeBytes += currLen; //record size
         pageData += UNSIGNED_SZ;
         ::memcpy(pageData,&freeBytes,UNSIGNED_SZ);
         pageData += UNSIGNED_SZ - PAGE_SIZE;
@@ -801,6 +801,7 @@ namespace PeterDB {
             }else if(rc == -4){
                 this->currRid.slotNum++; //if trying to read a deleted record go to next record
             }else if(rc == -2){
+                this->currRid.slotNum = 1;
                 this->currRid.pageNum++; //reached end of records
             }else{
                 return -1;
