@@ -92,6 +92,25 @@ namespace PeterDB {
         std::vector<RID> getRIDList(){
             return this->RIDList;
         }
+
+        unsigned getRIDOffset(const Attribute &indexAttr, RID rid, char* data){
+            unsigned currOff = UNSIGNED_SZ * 2; //key length (in case of int ,float) + num Rids field
+            if(indexAttr.type == 2){
+                currOff += this->getKeyLen();
+            }
+            data += currOff;
+            for(int i = 0; i < this->numRIDs; i++){
+                RID cur;
+                memcpy(&cur.pageNum,data, UNSIGNED_SZ);
+                memcpy(&cur.slotNum,data + UNSIGNED_SZ, UNSIGNED_SZ / 2);
+                if(cur.pageNum == rid.pageNum && cur.slotNum == rid.slotNum){
+                    return currOff;
+                }
+                currOff += UNSIGNED_SZ + (UNSIGNED_SZ / 2);
+                data += UNSIGNED_SZ + (UNSIGNED_SZ / 2);
+            }
+        }
+
         IXLeafRecordManager();
     protected:
         unsigned numRIDs;

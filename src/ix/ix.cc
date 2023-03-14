@@ -490,16 +490,60 @@ namespace PeterDB {
         return 0;
     }
 
-    void deleteHelper(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid){
-
+    RC deleteHelper(PageNum node, IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid){
+        void* data = calloc(1,PAGE_SIZE);
+        ixFileHandle.fileHandle.readPage(node, data);
+        IXPageManager page(data);
+        auto *dataC = static_cast<char*>(data);
+        if(page.getIsLeaf()){
+            //search for key rid pair
+            unsigned arr[2];
+            getInsertLoc2(page,attribute,key,arr);
+            unsigned insertOff = arr[0];
+            if(keyExists(data,attribute,insertOff,key)){
+                //delete key
+                IXLeafRecordManager leafRec(attribute,dataC + insertOff);
+                unsigned numRIDs = leafRec.getNumRIDs();
+                if(numRIDs == 1){
+                    //delete entire entry
+                    unsigned bytesShiftLen = page.getTotalIndexEntriesLen() - insertOff - leafRec.getRecordLen();
+                    memcpy(dataC + insertOff, dataC + insertOff + leafRec.getRecordLen(),bytesShiftLen);
+                    page.updateNumEntries(-1);
+                    page.updateFreeBytes(leafRec.getRecordLen());
+                }else{
+                    //delete just one RID
+                    unsigned ridOffset = leafRec.getRIDOffset(attribute,rid,dataC + insertOff);
+                    unsigned ridSz = UNSIGNED_SZ + UNSIGNED_SZ / 2;
+                    unsigned shiftBytes = page.getTotalIndexEntriesLen() - insertOff - ridOffset - ridSz;
+                    memmove(dataC + insertOff + ridOffset, dataC + insertOff + ridOffset + ridSz,shiftBytes);
+                    page.updateFreeBytes(ridSz);
+                }
+                ixFileHandle.fileHandle.writePage(node,data);
+            }else{
+                return -1;
+            }
+        }else{
+            //find subtree to navigate to; iterate linearly through keys on page
+            unsigned numEntries = page.getNumEntries();
+            unsigned curr = 0;
+            IXIndexRecordManager indexRec(attribute,dataC + curr);
+            PageNum nextPage = page.getRightSibling(); //left child of the index node;
+            for (unsigned i = 0; i < numEntries; i++) {
+                if (isGreaterKey(attribute, indexRec, key)) {
+                    break;
+                }
+                curr += indexRec.getRecordLen();
+                nextPage = indexRec.getRightChild();
+                indexRec = IXIndexRecordManager(attribute, dataC + curr);
+            }
+            deleteHelper(nextPage,ixFileHandle,attribute,key,rid);
+        }
+        return 0;
     }
 
     RC
     IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
-        //find entry
-        //remove from node
-        //no need to rebalance
-        return -1;
+        return deleteHelper(ixFileHandle.root,ixFileHandle,attribute,key,rid);
     }
 
     RC IndexManager::scan(IXFileHandle &ixFileHandle,
