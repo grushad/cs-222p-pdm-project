@@ -197,6 +197,80 @@ namespace PeterDB {
             memcpy(dataC + PAGE_SIZE - 5, &this->freeBytes, 2);
         }
 
+        unsigned getInsertOff(const Attribute &indexAttr, int key){
+            unsigned currOff = 0;
+            auto* pageC = static_cast<char*>(this->pageData);
+            for(int i = 0; i < this->numEntries; i++){
+                if(this->isLeaf){
+                    IXLeafRecordManager leafRec(indexAttr,pageC + currOff);
+                    int curKey;
+                    memcpy(&curKey, leafRec.getKey(), UNSIGNED_SZ);
+                    if(key <= curKey){
+                        return currOff;
+                    }
+                    currOff += leafRec.getRecordLen();
+                }else{
+                    IXIndexRecordManager indexRec(indexAttr,pageC + currOff);
+                    int curKey;
+                    memcpy(&curKey, indexRec.getKey(), UNSIGNED_SZ);
+                    if(key <= curKey){
+                        return currOff;
+                    }
+                    currOff += indexRec.getRecordLen();
+                }
+            }
+            return currOff;
+        }
+
+        unsigned getInsertOff(const Attribute &indexAttr, float key){
+            unsigned currOff = 0;
+            auto* pageC = static_cast<char*>(this->pageData);
+            for(int i = 0; i < this->numEntries; i++){
+                if(this->isLeaf){
+                    IXLeafRecordManager leafRec(indexAttr,pageC + currOff);
+                    float curKey;
+                    memcpy(&curKey, leafRec.getKey(), UNSIGNED_SZ);
+                    if(key <= curKey){
+                        return currOff;
+                    }
+                    currOff += leafRec.getRecordLen();
+                }else{
+                    IXIndexRecordManager indexRec(indexAttr,pageC + currOff);
+                    float curKey;
+                    memcpy(&curKey, indexRec.getKey(), UNSIGNED_SZ);
+                    if(key <= curKey){
+                        return currOff;
+                    }
+                    currOff += indexRec.getRecordLen();
+                }
+            }
+            return currOff;
+        }
+
+
+        unsigned getInsertOff(const Attribute &indexAttr, const std::string &key){
+            unsigned currOff = 0;
+            auto* pageC = static_cast<char*>(this->pageData);
+            for(int i = 0; i < this->numEntries; i++){
+                if(this->isLeaf){
+                    IXLeafRecordManager leafRec(indexAttr,pageC + currOff);
+                    std::string curKey(reinterpret_cast<char const *>(leafRec.getKey()), leafRec.getKeyLen());
+                    if(key <= curKey){
+                        return currOff;
+                    }
+                    currOff += leafRec.getRecordLen();
+                }else{
+                    IXIndexRecordManager indexRec(indexAttr,pageC + currOff);
+                    std::string curKey(reinterpret_cast<char const *>(indexRec.getKey()), indexRec.getKeyLen());
+                    if(key <= curKey){
+                        return currOff;
+                    }
+                    currOff += indexRec.getRecordLen();
+                }
+            }
+            return currOff;
+        }
+
         void getKeys(const Attribute &indexAttr, std::vector<IntKey> &keyList){
             unsigned currOff = 0;
             auto* pageC = static_cast<unsigned char*>(this->pageData);

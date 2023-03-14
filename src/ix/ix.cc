@@ -41,24 +41,7 @@ namespace PeterDB {
             RC rc1 = ixFileHandle.fileHandle.appendPage(dummy);
             ixFileHandle.root = 1;
             free(dummy);
-
             return rc1;
-
-//            auto* rootPage = static_cast<char*>(calloc(1,PAGE_SIZE));
-//            initPage(rootPage, false);
-//            unsigned leftChildPage = rootPageNum + 1;
-//            memcpy(rootPage + PAGE_SIZE - 9,&leftChildPage,UNSIGNED_SZ); //initialize left child of root
-//            RC rc2 = ixFileHandle.fileHandle.appendPage(rootPage);
-//            free(rootPage);
-//
-//            void* leafPage = calloc(1,PAGE_SIZE); //initialize left child page of root
-//            initPage(leafPage,true);
-//            RC rc3 = ixFileHandle.fileHandle.appendPage(leafPage);
-//            free(leafPage);
-//
-//            if(rc1 == -1 || rc2 == -1 || rc3 == -1)
-//                return -1;
-
         }
         return 0;
     }
@@ -90,102 +73,127 @@ namespace PeterDB {
         return high + 1;
     }
 
-    unsigned floatBinSrch(float key, vector<FloatKey> vec){
-        unsigned low = 0, high = vec.size() - 1;
-        while(low <= high){
-            unsigned mid = (low + high) / 2;
-            if(vec[mid].key < key){
-                low = mid + 1;
-            }else if(vec[mid].key > key){
-                high = mid - 1;
-            }else{
-                return mid;
-            }
-        }
-        return high + 1;
-    }
+//    unsigned floatBinSrch(float key, vector<FloatKey> vec){
+//        unsigned low = 0, high = vec.size() - 1;
+//        while(low <= high){
+//            unsigned mid = (low + high) / 2;
+//            if(vec[mid].key < key){
+//                low = mid + 1;
+//            }else if(vec[mid].key > key){
+//                high = mid - 1;
+//            }else{
+//                return mid;
+//            }
+//        }
+//        return high + 1;
+//    }
+//
+//    unsigned strBinSrch(const char* key, vector<SKey> vec){
+//        unsigned low = 0, high = vec.size() - 1;
+//        while(low <= high){
+//            unsigned mid = (low + high) / 2;
+//            unsigned val = strcmp(key,vec[mid].key);
+//            if(val > 0){
+//                low = mid + 1;
+//            }else if(val == 0){
+//                return mid;
+//            }else{
+//                high = mid - 1;
+//            }
+//        }
+//        return high + 1;
+//    }
 
-    unsigned strBinSrch(const char* key, vector<SKey> vec){
-        unsigned low = 0, high = vec.size() - 1;
-        while(low <= high){
-            unsigned mid = (low + high) / 2;
-            unsigned val = strcmp(key,vec[mid].key);
-            if(val > 0){
-                low = mid + 1;
-            }else if(val == 0){
-                return mid;
-            }else{
-                high = mid - 1;
-            }
-        }
-        return high + 1;
-    }
-
-    void getInsertLoc(IXPageManager page, void* pageData, const Attribute &attribute, const void* key, unsigned arr[]){
+    void getInsertLoc2(IXPageManager page, const Attribute &indexAttr, const void* key, unsigned arr[]){
         unsigned insertOff = 0;
-        unsigned shiftLen = 0;
-        if(page.getNumEntries() == 0) {
-            arr[0] = insertOff;
-            arr[1] = shiftLen;
-            return;
-        }
-        unsigned totalEntriesLen = page.getTotalIndexEntriesLen();
-        switch(attribute.type){
+        switch(indexAttr.type){
             case 0:
-            {
-                unsigned intKeyVal;
-                memcpy(&intKeyVal,key,UNSIGNED_SZ);
-                vector<IntKey> vec;
-                vec.reserve(page.getNumEntries());
-                page.getKeys(attribute,vec);
-                unsigned ind = intBinSrch(intKeyVal,vec);
-                if(ind == vec.size()){
-                    insertOff = totalEntriesLen;
-                }else{
-                    insertOff = vec[ind].offset;
-                    shiftLen = totalEntriesLen - insertOff;
-                }
+                int intKeyVal;
+                memcpy(&intKeyVal, key, UNSIGNED_SZ);
+                insertOff = page.getInsertOff(indexAttr, intKeyVal);
                 break;
-            }
             case 1:
-            {
                 float floatKeyVal;
                 memcpy(&floatKeyVal, key, UNSIGNED_SZ);
-                vector<FloatKey> vec;
-                vec.reserve(page.getNumEntries());
-                page.getKeys(attribute,vec);
-                unsigned ind = floatBinSrch(floatKeyVal,vec);
-                if(ind == vec.size()){
-                    insertOff = totalEntriesLen;
-                }else{
-                    insertOff = vec[ind].offset;
-                    shiftLen = totalEntriesLen - insertOff;
-                }
+                insertOff = page.getInsertOff(indexAttr, floatKeyVal);
                 break;
-            }
             case 2:
-            {
                 unsigned len;
                 memcpy(&len, key, UNSIGNED_SZ);
                 auto *keyC = static_cast<const char *>(key);
                 std::string sKeyVal(reinterpret_cast<char const *>(keyC + UNSIGNED_SZ), len);
-                vector<SKey> vec;
-                vec.reserve(page.getNumEntries());
-                page.getKeys(attribute,vec);
-                unsigned ind = strBinSrch(keyC,vec);
-                if(ind == vec.size()){
-                    insertOff = totalEntriesLen;
-                }else{
-                    insertOff = vec[ind].offset;
-                    shiftLen = totalEntriesLen - insertOff;
-                }
+                insertOff = page.getInsertOff(indexAttr, sKeyVal);
                 break;
-            }
         }
         arr[0] = insertOff;
-        arr[1] = shiftLen;
-        //return arr;
+        arr[1] = page.getTotalIndexEntriesLen() - insertOff;
     }
+
+//    void getInsertLoc(IXPageManager page, void* pageData, const Attribute &attribute, const void* key, unsigned arr[]){
+//        unsigned insertOff = 0;
+//        unsigned shiftLen = 0;
+//        if(page.getNumEntries() == 0) {
+//            arr[0] = insertOff;
+//            arr[1] = shiftLen;
+//            return;
+//        }
+//        unsigned totalEntriesLen = page.getTotalIndexEntriesLen();
+//        switch(attribute.type){
+//            case 0:
+//            {
+//                unsigned intKeyVal;
+//                memcpy(&intKeyVal,key,UNSIGNED_SZ);
+//                vector<IntKey> vec;
+//                vec.reserve(page.getNumEntries());
+//                page.getKeys(attribute,vec);
+//                unsigned ind = intBinSrch(intKeyVal,vec);
+//                if(ind == vec.size()){
+//                    insertOff = totalEntriesLen;
+//                }else{
+//                    insertOff = vec[ind].offset;
+//                    shiftLen = totalEntriesLen - insertOff;
+//                }
+//                break;
+//            }
+//            case 1:
+//            {
+//                float floatKeyVal;
+//                memcpy(&floatKeyVal, key, UNSIGNED_SZ);
+//                vector<FloatKey> vec;
+//                vec.reserve(page.getNumEntries());
+//                page.getKeys(attribute,vec);
+//                unsigned ind = floatBinSrch(floatKeyVal,vec);
+//                if(ind == vec.size()){
+//                    insertOff = totalEntriesLen;
+//                }else{
+//                    insertOff = vec[ind].offset;
+//                    shiftLen = totalEntriesLen - insertOff;
+//                }
+//                break;
+//            }
+//            case 2:
+//            {
+//                unsigned len;
+//                memcpy(&len, key, UNSIGNED_SZ);
+//                auto *keyC = static_cast<const char *>(key);
+//                std::string sKeyVal(reinterpret_cast<char const *>(keyC + UNSIGNED_SZ), len);
+//                vector<SKey> vec;
+//                vec.reserve(page.getNumEntries());
+//                page.getKeys(attribute,vec);
+//                unsigned ind = strBinSrch(keyC,vec);
+//                if(ind == vec.size()){
+//                    insertOff = totalEntriesLen;
+//                }else{
+//                    insertOff = vec[ind].offset;
+//                    shiftLen = totalEntriesLen - insertOff;
+//                }
+//                break;
+//            }
+//        }
+//        arr[0] = insertOff;
+//        arr[1] = shiftLen;
+//        //return arr;
+//    }
 
     unsigned createLeafRec(void* data, const Attribute &attribute, const void *key, const RID &rid){
         unsigned recLen = 0;
@@ -374,14 +382,15 @@ namespace PeterDB {
             free(dataToInsert);
             return 0;
         }
-        void* data = malloc(PAGE_SIZE);
+        void* data = calloc(1,PAGE_SIZE);
         ixFileHandle.fileHandle.readPage(node, data);
         IXPageManager page(data);
         auto *dataC = static_cast<char*>(data);
 
         if(page.getIsLeaf()){
             unsigned arr[2];
-            getInsertLoc(page,data,attribute,key, arr);  //find insert offset
+            getInsertLoc2(page,attribute,key,arr);
+//            getInsertLoc(page,data,attribute,key, arr);  //find insert offset
             unsigned insertOff = arr[0];
             unsigned shiftLen = arr[1];
             unsigned size;
@@ -390,6 +399,7 @@ namespace PeterDB {
                 size = createLeafRec(dataToInsert,attribute,key,rid); //key doesn't exist
             }else{
                 size = UNSIGNED_SZ + (UNSIGNED_SZ / 2);//need space only for 1 RID i.e. 6 bytes
+                memcpy(dataToInsert, &rid, UNSIGNED_SZ + UNSIGNED_SZ / 2);
             }
 
             if(page.getFreeBytes() >= size){
@@ -439,13 +449,13 @@ namespace PeterDB {
                 nextPage = indexRec.getRightChild();
                 indexRec = IXIndexRecordManager(attribute, dataC + curr);
             }
-            newKey = malloc(PAGE_SIZE / 2);
+            newKey = calloc(1,PAGE_SIZE / 2);
             insertHelper(nextPage, ixFileHandle, attribute, key, rid, newKey, newPageEntry);
             if(newPageEntry == 0) {
                 free(newKey);
                 return 0;
             }else{
-                void* indexData = malloc(PAGE_SIZE / 2);
+                void* indexData = calloc(1,PAGE_SIZE / 2);
                 unsigned newIndRecSize = createIndexRec(indexData,attribute,newKey,newPageEntry);
                 if(page.getFreeBytes() >= newIndRecSize){
                     unsigned shiftLen = page.getTotalIndexEntriesLen() - curr;
@@ -480,8 +490,15 @@ namespace PeterDB {
         return 0;
     }
 
+    void deleteHelper(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid){
+
+    }
+
     RC
     IndexManager::deleteEntry(IXFileHandle &ixFileHandle, const Attribute &attribute, const void *key, const RID &rid) {
+        //find entry
+        //remove from node
+        //no need to rebalance
         return -1;
     }
 
