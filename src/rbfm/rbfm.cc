@@ -4,6 +4,7 @@
 #include <iostream>
 #include <algorithm>
 #include <unordered_set>
+#include <map>
 
 using namespace std;
 namespace PeterDB {
@@ -236,14 +237,17 @@ namespace PeterDB {
         return 0;
     }
 
-    RC getAttrIds(const vector<Attribute> &recordDescriptor, const vector<string> &attributeNames, unordered_set<unsigned> &ids){
+    RC getAttrIds(const vector<Attribute> &recordDescriptor, const vector<string> &attributeNames, std::map<int, char*> &mp){
         unordered_set<string> attrNames;
         for(const string s: attributeNames)
             attrNames.insert(s);
         const unsigned sz = recordDescriptor.size();
         for(unsigned i = 0; i < sz; i++){
             if(attrNames.find(recordDescriptor[i].name) != attrNames.end()){
-                ids.insert(i);
+                if(recordDescriptor[i].type == 2)
+                    mp[i] = static_cast<char *>(calloc(1,PAGE_SIZE / 2));
+                else
+                    mp[i] = static_cast<char *>(calloc(1, UNSIGNED_SZ));
             }
         }
         return 0;
@@ -308,41 +312,74 @@ namespace PeterDB {
             vector<bool> nullvec;
             getNullBits(diskD, numFields, nullvec);
             pageContent += nullInd; //skip the null indicator bits
-            diskD += nullInd;
-            recSz += nullInd;
+            unsigned nullBitsAttr = ceil((double) attributeNames.size() / 8); //null ind for only reqd attributes
+            diskD += nullBitsAttr;
+            recSz += nullBitsAttr;
 
             //get the relevant attribute ids as reqd
-            unordered_set<unsigned> attrIds;
-            getAttrIds(recordDescriptor,attributeNames,attrIds);
+            //unordered_set<unsigned> attrIds;
+            std::map<int, char*> attrIdToData;
+            std::map<std::string, int> attrNameToId;
+            getAttrIds(recordDescriptor,attributeNames,attrIdToData);
 
             //for each field copy its data and length
             unsigned startRecData = TMBSTN_SZ + RID_SZ + nullInd + (numFields * UNSIGNED_SZ);
             unsigned recLen = 0;
             unsigned offsetLen = numFields * UNSIGNED_SZ;
             for (int i = 0; i < numFields; i++) {
+                Attribute a = recordDescriptor[i];
                 if (!nullvec[i]) {
-                    Attribute a = recordDescriptor[i];
                     unsigned offsetRec;
                     ::memcpy(&offsetRec, pageContent, UNSIGNED_SZ);
                     unsigned len = offsetRec - startRecData;
                     if (a.type == 2) {
                         //type varchar so append length
-                        if(attrIds.find(i) != attrIds.end()){
-                            memcpy(diskD, &len, UNSIGNED_SZ);
+                        if(attrIdToData.find(i) != attrIdToData.end()){
+                            memcpy(attrIdToData[i],&len,UNSIGNED_SZ);
+//                            memcpy(diskD, &len, UNSIGNED_SZ);
                             recSz += UNSIGNED_SZ;
-                            diskD += UNSIGNED_SZ;
+                            //diskD += UNSIGNED_SZ;
                         }
                     }
-                    if(attrIds.find(i) != attrIds.end()){
-                        memcpy(diskD, pageContent + offsetLen + recLen, len);
+                    if(attrIdToData.find(i) != attrIdToData.end()){
+                        attrNameToId[a.name] = i;
+                        if(a.type == 2)
+                            memcpy(attrIdToData[i] + UNSIGNED_SZ,pageContent + offsetLen + recLen, len);
+                        else
+                            memcpy(attrIdToData[i],pageContent + offsetLen + recLen, len);
+//                        memcpy(diskD, pageContent + offsetLen + recLen, len);
                         recSz += len;
-                        diskD += len;
+                        //diskD += len;
                     }
                     startRecData += len;
                     recLen += len;
+                }else{
+                    if(attrIdToData.find(i) != attrIdToData.end()){
+                        attrIdToData[i] = nullptr;
+                        attrNameToId[a.name] = i;
+                    }
                 }
                 pageContent += UNSIGNED_SZ; //moves ahead by size of offset
                 offsetLen -= UNSIGNED_SZ;
+            }
+
+            for(string attrName: attributeNames){
+                if(attrNameToId.find(attrName) != attrNameToId.end()){
+                    int id = attrNameToId[attrName];
+                    if(attrIdToData[id] != nullptr){
+                        if(recordDescriptor[id].type == 2){
+                            unsigned len;
+                            memcpy(&len, attrIdToData[id], UNSIGNED_SZ);
+                            len += UNSIGNED_SZ;
+                            memcpy(diskD,attrIdToData[id],len);
+                            diskD += len;
+                        }else{
+                            memcpy(diskD, attrIdToData[id],UNSIGNED_SZ);
+                            diskD += UNSIGNED_SZ;
+                        }
+                        free(attrIdToData[id]);
+                    }
+                }
             }
             //at last copy the record data in the API format to data
             memcpy(data, diskD - recSz, recSz);
