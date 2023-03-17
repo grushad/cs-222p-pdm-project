@@ -158,6 +158,12 @@ namespace PeterDB {
 
     class Filter : public Iterator {
         // Filter operator
+    private:
+        std::string lhsAttr;
+        CompOp compOp;
+        void* value;
+        Iterator *iter;
+        std::vector<Attribute> recordDesc;
     public:
         Filter(Iterator *input,               // Iterator of input R
                const Condition &condition     // Selection condition
@@ -173,6 +179,10 @@ namespace PeterDB {
 
     class Project : public Iterator {
         // Projection operator
+    private:
+        Iterator *iter;
+        std::vector<Attribute> recordDesc;
+        std::vector<std::string> attrNames;
     public:
         Project(Iterator *input,                                // Iterator of input R
                 const std::vector<std::string> &attrNames);     // std::vector containing attribute names
