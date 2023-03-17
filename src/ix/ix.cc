@@ -12,7 +12,7 @@ namespace PeterDB {
         return _index_manager;
     }
 
-    PagedFileManager &pfm = PagedFileManager::instance();
+    PagedFileManager &ixPfm = PagedFileManager::instance();
 
     void initPage(void * page, bool isLeaf){
         unsigned short freeBytes = PAGE_SIZE - (1 + (UNSIGNED_SZ * 2)); // leaf | entries | free bytes | right child
@@ -25,11 +25,11 @@ namespace PeterDB {
     }
 
     RC IndexManager::createFile(const std::string &fileName) {
-        return pfm.createFile(fileName);
+        return ixPfm.createFile(fileName);
     }
 
     RC IndexManager::destroyFile(const std::string &fileName) {
-        return pfm.destroyFile(fileName);
+        return ixPfm.destroyFile(fileName);
     }
 
     RC initIndexFile(IXFileHandle &ixFileHandle){
@@ -49,13 +49,13 @@ namespace PeterDB {
     RC IndexManager::openFile(const std::string &fileName, IXFileHandle &ixFileHandle) {
         if(ixFileHandle.fileHandle.fileP != nullptr)
             return -1;
-        RC rc = pfm.openFile(fileName,ixFileHandle.fileHandle);
+        RC rc = ixPfm.openFile(fileName,ixFileHandle.fileHandle);
         initIndexFile(ixFileHandle);
         return rc;
     }
 
     RC IndexManager::closeFile(IXFileHandle &ixFileHandle) {
-        return pfm.closeFile(ixFileHandle.fileHandle);
+        return ixPfm.closeFile(ixFileHandle.fileHandle);
     }
 
     unsigned intBinSrch(unsigned key, vector<IntKey> vec){

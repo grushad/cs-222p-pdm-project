@@ -527,7 +527,9 @@ namespace PeterDB {
 
     // QE IX related
     RC RelationManager::createIndex(const std::string &tableName, const std::string &attributeName){
-        return -1;
+        //call ix create file func
+        //for each entry in the table; call insertentry func ??
+        return 0;
     }
 
     RC RelationManager::destroyIndex(const std::string &tableName, const std::string &attributeName){
