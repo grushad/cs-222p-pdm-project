@@ -251,6 +251,16 @@ namespace PeterDB {
 
     class Aggregate : public Iterator {
         // Aggregation operator
+    private:
+        Iterator *iter;
+        Attribute aggAttr;
+        AggregateOp op;
+        std::vector<Attribute> recordDesc;
+        void* result;
+        int curResI;
+        float curResF;
+        int curCount;
+        bool first;
     public:
         // Mandatory
         // Basic aggregation

@@ -194,7 +194,14 @@ namespace PeterDB {
     }
 
     Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, AggregateOp op) {
-
+        this->iter = input;
+        this->aggAttr = aggAttr;
+        this->op = op;
+        this->iter->getAttributes(this->recordDesc);
+        this->result = calloc(1,PAGE_SIZE);
+        this->curResI = 0;
+        this->curResF = 0.0f;
+        this->first = false;
     }
 
     Aggregate::Aggregate(Iterator *input, const Attribute &aggAttr, const Attribute &groupAttr, AggregateOp op) {
@@ -202,14 +209,105 @@ namespace PeterDB {
     }
 
     Aggregate::~Aggregate() {
-
+        free(this->result);
     }
 
     RC Aggregate::getNextTuple(void *data) {
-        return -1;
+        if(!first)
+            first = true;
+        else
+            return -1;
+        while(this->iter->getNextTuple(this->result) != RM_EOF){
+            auto* resultC = static_cast<char *>(result);
+            int numFields = this->recordDesc.size();
+            int nullBytes = ceil((double)numFields / 8);
+            vector<bool> nullVec;
+            getNullBits(result, numFields, nullVec);
+            resultC += nullBytes;
+            for(int i = 0; i < this->recordDesc.size(); i++){
+                int len = 0;
+                if(recordDesc[i].type == 2){
+                    memcpy(&len,resultC,UNSIGNED_SZ);
+                }
+                len += UNSIGNED_SZ;
+                if(strcmp(this->recordDesc[i].name.c_str(), this->aggAttr.name.c_str()) == 0){
+                    if(!nullVec[i]){
+                        if(this->aggAttr.type == 0){ //int
+                            int val;
+                            memcpy(&val, resultC, UNSIGNED_SZ);
+                            switch(this->op){
+                                case 0: //min
+                                    this->curResI = std::min(this->curResI, val);
+                                    break;
+                                case 1: //max
+                                    this->curResI = std::max(this->curResI, val);
+                                    break;
+                                case 2: //count
+                                    this->curCount++;
+                                    break;
+                                case 3: //sum
+                                    this->curResI += val;
+                                    break;
+                                case 4: //avg
+                                    this->curResI += val;
+                                    this->curCount++;
+                                    break;
+                            }
+                        }else if(this->aggAttr.type == 1){ //float
+                            float val;
+                            memcpy(&val, resultC, UNSIGNED_SZ);
+                            switch(this->op){
+                                case 0: //min
+                                    this->curResF = std::min(this->curResF, val);
+                                    break;
+                                case 1: //max
+                                    this->curResF = std::max(this->curResF, val);
+                                    break;
+                                case 2: //count
+                                    this->curCount++;
+                                    break;
+                                case 3: //sum
+                                    this->curResF += val;
+                                    break;
+                                case 4: //avg
+                                    this->curResF += val;
+                                    this->curCount++;
+                                    break;
+                            }
+                        }
+                    }
+                    break;
+                }
+                resultC += len;
+            }
+        }
+        if(this->op == 2){
+            memcpy(data,&this->curCount,UNSIGNED_SZ);
+        }else if(this->aggAttr.type == 0){
+            if(this->op == 4){
+                float res = (float)this->curResI / (float)this->curCount;
+                memcpy(data,&res,UNSIGNED_SZ);
+            }else{
+                memcpy(data, &this->curResI,UNSIGNED_SZ);
+            }
+
+        }else if(this->aggAttr.type == 1){
+            if(this->op == 4){
+                this->curResF = this->curResF / (float)this->curCount;
+            }
+            memcpy(data, &this->curResF,UNSIGNED_SZ);
+        }
+        return 0;
     }
 
     RC Aggregate::getAttributes(std::vector<Attribute> &attrs) const {
-        return -1;
+        attrs.clear();
+        for(const Attribute &a: this->recordDesc){
+            if(strcmp(a.name.c_str(), this->aggAttr.name.c_str()) == 0) {
+                attrs.emplace_back(a);
+                break;
+            }
+        }
+        return 0;
     }
 } // namespace PeterDB
