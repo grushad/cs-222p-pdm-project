@@ -1,6 +1,7 @@
 #include "src/include/qe.h"
 #include "src/rbfm/rbfm.cc"
 #include <cmath>
+#include <map>
 
 namespace PeterDB {
     Filter::Filter(Iterator *input, const Condition &condition) {
@@ -72,19 +73,76 @@ namespace PeterDB {
     Project::Project(Iterator *input, const std::vector<std::string> &attrNames) {
         this->iter = input;
         this->attrNames = attrNames;
-        this->getAttributes(this->recordDesc);
+        this->iter->getAttributes(this->recordDesc);
+        getAttrIds(this->recordDesc,this->attrNames,this->attrIdToData);
+        this->result = calloc(1,PAGE_SIZE / 2);
     }
 
     Project::~Project() {
-
+        free(this->result);
+        std::map<int, char*>::iterator it;
+        for (it = this->attrIdToData.begin(); it != this->attrIdToData.end(); it++){
+            free(it->second);
+        }
     }
 
     RC Project::getNextTuple(void *data) {
-        return -1;
+        RC rc = this->iter->getNextTuple(this->result);
+        auto* resultC = static_cast<char *>(this->result);
+        if(rc == RM_EOF)
+            return QE_EOF;
+        std::map<std::string, int> attrNameToId;
+        int numFields = this->recordDesc.size();
+        int nullBytes = ceil((double) numFields / 8);
+        std::vector<bool> nullVec;
+        getNullBits(resultC,numFields,nullVec);
+        resultC += nullBytes; //skip null bytes
+        for(int i = 0; i < numFields; i++){
+            if(!nullVec[i]){
+                int len = 0;
+                if(this->recordDesc[i].type == 2){
+                    memcpy(&len, resultC, UNSIGNED_SZ);
+                }
+                len += UNSIGNED_SZ;
+                if(this->attrIdToData.find(i) != this->attrIdToData.end()){
+                    attrNameToId[this->recordDesc[i].name] = i;
+                    memcpy(attrIdToData[i],resultC,len);
+                }
+                resultC += len;
+            }
+        }
+        auto* dataC = static_cast<char *>(data);
+
+        int resNullBytes = ceil((double)this->attrNames.size() / 8);
+        void* nullData = calloc(1,resNullBytes);
+        memcpy(dataC, nullData,resNullBytes);
+        dataC += resNullBytes;
+
+        for(const string &attrName: this->attrNames){
+            if(attrNameToId.find(attrName) != attrNameToId.end()){
+                int id = attrNameToId[attrName];
+                int len = 0;
+                if(this->recordDesc[id].type == 2){
+                    memcpy(&len, this->attrIdToData[id],UNSIGNED_SZ);
+                }
+                len += UNSIGNED_SZ;
+                memcpy(dataC, attrIdToData[id],len);
+                dataC += len;
+            }
+        }
+        return 0;
     }
 
     RC Project::getAttributes(std::vector<Attribute> &attrs) const {
-        return this->iter->getAttributes(attrs);
+        attrs.clear();
+        unordered_set<string> names;
+        for(const string &s: this->attrNames)
+            names.insert(s);
+        for(const Attribute &a: this->recordDesc){
+            if(names.find(a.name) != names.end())
+                attrs.emplace_back(a);
+        }
+        return 0;
     }
 
     BNLJoin::BNLJoin(Iterator *leftIn, TableScan *rightIn, const Condition &condition, const unsigned int numPages) {

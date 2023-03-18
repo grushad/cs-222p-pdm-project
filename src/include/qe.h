@@ -4,6 +4,7 @@
 #include <vector>
 #include <string>
 #include <limits>
+#include <map>
 
 #include "rm.h"
 #include "ix.h"
@@ -183,6 +184,8 @@ namespace PeterDB {
         Iterator *iter;
         std::vector<Attribute> recordDesc;
         std::vector<std::string> attrNames;
+        std::map<int, char*> attrIdToData;
+        void* result;
     public:
         Project(Iterator *input,                                // Iterator of input R
                 const std::vector<std::string> &attrNames);     // std::vector containing attribute names
