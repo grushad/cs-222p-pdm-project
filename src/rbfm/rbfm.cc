@@ -336,9 +336,7 @@ namespace PeterDB {
                         //type varchar so append length
                         if(attrIdToData.find(i) != attrIdToData.end()){
                             memcpy(attrIdToData[i],&len,UNSIGNED_SZ);
-//                            memcpy(diskD, &len, UNSIGNED_SZ);
                             recSz += UNSIGNED_SZ;
-                            //diskD += UNSIGNED_SZ;
                         }
                     }
                     if(attrIdToData.find(i) != attrIdToData.end()){
@@ -347,9 +345,7 @@ namespace PeterDB {
                             memcpy(attrIdToData[i] + UNSIGNED_SZ,pageContent + offsetLen + recLen, len);
                         else
                             memcpy(attrIdToData[i],pageContent + offsetLen + recLen, len);
-//                        memcpy(diskD, pageContent + offsetLen + recLen, len);
                         recSz += len;
-                        //diskD += len;
                     }
                     startRecData += len;
                     recLen += len;
