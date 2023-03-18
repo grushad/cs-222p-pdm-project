@@ -45,7 +45,7 @@ namespace PeterDB {
                 memcpy(&len,dataC,UNSIGNED_SZ);
                 dataC += UNSIGNED_SZ;
             }
-            this->key = malloc(len);
+            this->key = calloc(1,len);
             memcpy(this->key,dataC,len);
         }
         unsigned getRecordLen(){
