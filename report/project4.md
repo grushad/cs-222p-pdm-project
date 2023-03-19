@@ -2,12 +2,10 @@
 
 
 ### 1. Basic information
-- Team #:
-- Github Repo Link:
-- Student 1 UCI NetID:
-- Student 1 Name:
-- Student 2 UCI NetID (if applicable):
-- Student 2 Name (if applicable):
+- Team #: N/A
+- Github Repo Link: https://github.com/UCI-Chenli-teaching/cs222p-winter23-grushad
+- Student 1 UCI NetID: gdharod
+- Student 1 Name: Grusha Jayesh Dharod
 
 
 ### 2. Catalog information about Index
@@ -60,7 +58,7 @@
 
 ### 10. Member contribution (for team of two)
 - Explain how you distribute the workload in team.
-
+N/A
 
 
 ### 11. Other (optional)
