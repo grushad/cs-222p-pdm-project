@@ -1,16 +1,19 @@
 #include <cmath>
 #include "src/include/rm.h"
+#include "src/include/ix.h"
 #include <cstring>
 
 namespace PeterDB {
     static unsigned maxTableId;
     RelationManager &RelationManager::instance() {
-        maxTableId = 0;
+        maxTableId = 1;
         static RelationManager _relation_manager = RelationManager();
         return _relation_manager;
     }
 
     RecordBasedFileManager &rbfm = RecordBasedFileManager::instance();
+
+    IndexManager &ix = IndexManager::instance();
 
     RelationManager::RelationManager() = default;
 
@@ -20,7 +23,6 @@ namespace PeterDB {
 
     RelationManager &RelationManager::operator=(const RelationManager &) = default;
 
-    //implementing rm Table class functions
     unsigned TableManager::getTableId(){
         return this->tableId;
     }
@@ -529,11 +531,35 @@ namespace PeterDB {
     RC RelationManager::createIndex(const std::string &tableName, const std::string &attributeName){
         //call ix create file func
         //for each entry in the table; call insertentry func ??
-        return 0;
+        std::string indexFileName = tableName + "_" + attributeName + ".idx";
+        RC rc = ix.createFile(indexFileName);
+//        IXFileHandle ixFileHandle;
+//        ix.openFile(tableName,ixFileHandle);
+//        std::vector<Attribute> attrs;
+//        this->getAttributes(tableName, attrs);
+//        Attribute attribute = attrs[0];
+//        for(Attribute &a: attrs){
+//            if(strcmp(a.name.c_str(), attributeName.c_str()) == 0) {
+//                attribute = a;
+//                break;
+//            }
+//        }
+//        RM_ScanIterator iterator;
+//        std::vector<std::string> attrNames;
+//        attrNames.emplace_back(attributeName);
+//        this->scan(tableName,"",NO_OP, nullptr,attrNames,iterator);
+//        RID rid;
+//        void* data = calloc(1, PAGE_SIZE / 2);
+//        while(iterator.getNextTuple(rid, data) != RM_EOF){
+//            ix.insertEntry(ixFileHandle,attribute,data,rid);
+//        }
+        return rc;
     }
 
     RC RelationManager::destroyIndex(const std::string &tableName, const std::string &attributeName){
-        return -1;
+        std::string indexFileName = tableName + "_" + attributeName + ".idx";
+        RC rc = ix.destroyFile(indexFileName);
+        return rc;
     }
 
     // indexScan returns an iterator to allow the caller to go through qualified entries in index
