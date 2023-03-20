@@ -495,6 +495,7 @@ namespace PeterDB {
         ixFileHandle.fileHandle.readPage(node, data);
         IXPageManager page(data);
         auto *dataC = static_cast<char*>(data);
+        RC rc = 0;
         if(page.getIsLeaf()){
             //search for key rid pair
             unsigned arr[2];
@@ -507,7 +508,14 @@ namespace PeterDB {
                 if(numRIDs == 1){
                     //delete entire entry
                     unsigned bytesShiftLen = page.getTotalIndexEntriesLen() - insertOff - leafRec.getRecordLen();
-                    memcpy(dataC + insertOff, dataC + insertOff + leafRec.getRecordLen(),bytesShiftLen);
+                    if(bytesShiftLen == 0){
+                        void* delData = calloc(1,leafRec.getRecordLen());
+                        memcpy(dataC + insertOff, delData, leafRec.getRecordLen());
+                        free(delData);
+                    }else {
+                        memcpy(dataC + insertOff, dataC + insertOff + leafRec.getRecordLen(), bytesShiftLen);
+                    }
+
                     page.updateNumEntries(-1);
                     page.updateFreeBytes(leafRec.getRecordLen());
                 }else{
@@ -536,9 +544,9 @@ namespace PeterDB {
                 nextPage = indexRec.getRightChild();
                 indexRec = IXIndexRecordManager(attribute, dataC + curr);
             }
-            deleteHelper(nextPage,ixFileHandle,attribute,key,rid);
+            rc = deleteHelper(nextPage,ixFileHandle,attribute,key,rid);
         }
-        return 0;
+        return rc;
     }
 
     RC
